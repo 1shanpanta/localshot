@@ -1,8 +1,8 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, globalShortcut, screen } from 'electron'
 import { join } from 'path'
 import { setupTray } from './tray'
 import { setupIPC } from './ipc'
-import { captureFullScreen, captureScreen } from './capture'
+import { captureFullScreen } from './capture'
 
 let editorWindow: BrowserWindow | null = null
 let selectionWindow: BrowserWindow | null = null
@@ -29,7 +29,7 @@ function createEditorWindow(): BrowserWindow {
   if (process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(`${process.env.ELECTRON_RENDERER_URL}/index.html`)
   } else {
-    win.loadFile(join(__dirname, '../renderer/editor.html'))
+    win.loadFile(join(__dirname, '../renderer/index.html'))
   }
 
   win.on('closed', () => {

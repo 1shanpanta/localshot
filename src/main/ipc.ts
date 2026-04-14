@@ -1,6 +1,7 @@
-import { ipcMain, clipboard, nativeImage, dialog, BrowserWindow } from 'electron'
+import { ipcMain, clipboard, nativeImage, dialog, BrowserWindow, app } from 'electron'
 import { writeFileSync } from 'fs'
 import { join } from 'path'
+import { homedir } from 'os'
 
 interface IPCActions {
   onAreaSelected: (imageDataUrl: string) => void
@@ -50,7 +51,7 @@ export function setupIPC(actions: IPCActions): void {
     const result = await dialog.showSaveDialog(win, {
       title: 'Save Screenshot',
       defaultPath: join(
-        require('os').homedir(),
+        homedir(),
         'Desktop',
         `localshot-${Date.now()}.png`
       ),

@@ -3,10 +3,12 @@ import { readFileSync, unlinkSync, existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
 
-const TEMP_DIR = app?.getPath('temp') || '/tmp'
+function getTempDir(): string {
+  try { return app.getPath('temp') } catch { return '/tmp' }
+}
 
 export async function captureFullScreen(): Promise<string | null> {
-  const tempPath = join(TEMP_DIR, `localshot-capture-${Date.now()}.png`)
+  const tempPath = join(getTempDir(), `localshot-capture-${Date.now()}.png`)
 
   try {
     // Use macOS native screencapture - silent (-x), full screen
