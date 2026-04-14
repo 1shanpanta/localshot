@@ -1,52 +1,53 @@
 # LocalShot Architecture
 
 ## Overview
-LocalShot is a macOS screenshot tool built with Electron + React + TypeScript. It provides screen capture, annotation, and quick sharing -- a local alternative to CleanShot X.
+Native macOS screenshot tool built with Swift + AppKit. Menu bar app with screen capture, area selection, annotation editor, and quick overlay. Follows the same architecture as Open Wispr.
 
 ## Tech Stack
-- **Framework:** Electron 34 (Chromium-based desktop app)
-- **Build:** electron-vite (Vite-based build for main/preload/renderer)
-- **UI:** React 19 + TypeScript + Tailwind CSS
-- **Canvas:** Fabric.js 6 for annotation editor
-- **Icons:** Lucide React
+- **Language:** Swift 5.9
+- **UI:** AppKit (NSStatusItem, NSWindow, NSView, Core Graphics)
+- **Capture:** CGDisplayCreateImage (native macOS API)
+- **Build:** Swift Package Manager (two-target: lib + executable)
+- **Bundle:** scripts/bundle-app.sh creates .app with Info.plist + codesign
 
-## Process Architecture
+## Package Structure
+```
+Package.swift
+  LocalShotLib (library) -- all app logic
+  localshot (executable) -- entry point only
+```
 
-### Main Process (`src/main/`)
-- `index.ts` -- App lifecycle, window management, global shortcuts
-- `capture.ts` -- Screen capture using macOS native `screencapture` CLI
-- `tray.ts` -- System tray (menu bar) icon and context menu
-- `ipc.ts` -- IPC message handlers between main <-> renderer
+## App Lifecycle
+1. `main.swift` sets activation policy to `.accessory` (no dock icon)
+2. `AppDelegate` creates StatusBarController, HotkeyManager, ScreenCaptureManager
+3. App sits in menu bar, waiting for hotkey or menu click
+4. On capture: ScreenCaptureManager -> SelectionWindow (optional) -> QuickOverlayWindow -> AnnotationWindow
 
-### Preload (`src/preload/`)
-- `index.ts` -- Context bridge exposing `window.localshot` API to renderer
+## Key Files
 
-### Renderer (`src/renderer/`)
-Three separate HTML entry points, each a mini React app:
-1. **Editor** (`index.html`) -- Main annotation editor window
-2. **Selection** (`selection.html`) -- Transparent fullscreen overlay for area selection
-3. **Overlay** (`overlay.html`) -- Quick access thumbnail after capture
+| File | Purpose |
+|------|---------|
+| `main.swift` | Entry point, NSApplication setup |
+| `AppDelegate.swift` | Coordinator: capture flow, clipboard, save |
+| `StatusBarController.swift` | NSStatusItem, context menu, template icon |
+| `HotkeyManager.swift` | NSEvent.addGlobalMonitorForEvents for Cmd+Shift+1/2 |
+| `ScreenCaptureManager.swift` | CGDisplayCreateImage wrapper |
+| `SelectionWindow.swift` | Transparent fullscreen overlay, drag-to-select |
+| `AnnotationTool.swift` | Tool enum, icon drawing, shortcuts, colors |
+| `Annotations.swift` | Annotation protocol + 9 concrete types |
+| `AnnotationView.swift` | Custom NSView: renders image + annotations, handles mouse |
+| `AnnotationWindow.swift` | Editor window with sidebar toolbar |
+| `QuickOverlayWindow.swift` | Floating thumbnail with copy/annotate/save buttons |
 
 ## Capture Flow
-1. User triggers via global shortcut or tray menu
-2. **Full screen:** `screencapture -x` captures entire screen to temp PNG
-3. **Area select:** Full screen captured first, then selection overlay shown with screenshot as background. User drags to select region, cropped client-side on canvas
-4. Cropped/full image sent to quick overlay (thumbnail in corner)
-5. User can Copy, Save, or open Annotate editor from overlay
+1. User presses Cmd+Shift+1 or Cmd+Shift+2
+2. CGDisplayCreateImage captures the display
+3. For area: full screenshot shown behind a transparent overlay, user drags to crop
+4. Quick overlay appears (bottom-right corner, auto-closes 8s)
+5. User clicks "Annotate" to open editor, or "Copy" for clipboard
 
-## Annotation Tools
-All annotation happens on a Fabric.js canvas with the screenshot as background image:
-- **Rectangle** (red by default) -- the signature feature
-- **Ellipse, Arrow, Line** -- standard shapes
-- **Text** -- editable text overlay
-- **Freehand** -- pencil drawing with auto-smoothing
-- **Highlight** -- semi-transparent color overlay
-- **Blur** -- mosaic pixelation effect
-- **Counter** -- numbered badges (1, 2, 3...)
-
-## Key Decisions
-- macOS `screencapture` CLI over Electron `desktopCapturer` for reliability
-- Fabric.js over raw Canvas for object manipulation (select, move, resize, delete)
-- Separate HTML entry points per window to keep bundle sizes small
-- Template image for tray icon (auto-adapts to dark/light menu bar)
-- Menu bar only app (dock icon hidden) to stay out of the way
+## Annotation System
+- Protocol-based: each annotation type implements `draw(in:)`, `hitTest(point:)`, `move(by:)`
+- AnnotationView manages the array, handles mouse events per active tool
+- Core Graphics rendering (no third-party canvas library)
+- Export renders at full image resolution regardless of view scale

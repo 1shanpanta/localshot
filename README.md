@@ -1,31 +1,33 @@
 # LocalShot
 
-Local screenshot tool with annotation for macOS. A free, open-source alternative to CleanShot X.
+Native macOS screenshot tool with annotation. A free, open-source alternative to CleanShot X.
+
+Built with Swift + AppKit. No Electron, no web views -- pure native.
 
 ## Features
 
 - **Screen Capture** -- Full screen and area selection with crosshair overlay
 - **Annotation Editor** -- Rectangle (red boxes!), ellipse, arrow, line, text, freehand, highlight, blur, counter badges
 - **Quick Access Overlay** -- Floating thumbnail after capture with one-click copy/save/annotate
-- **Menu Bar App** -- Lives in your menu bar, stays out of the way
+- **Menu Bar App** -- Lives in your menu bar, no dock icon
 - **Global Shortcuts** -- Cmd+Shift+1 (full screen), Cmd+Shift+2 (area select)
 - **Keyboard-Driven** -- Every tool has a single-key shortcut (V, R, A, T, P, etc.)
-- **Copy & Save** -- Clipboard copy and file save with Retina quality export
+- **Copy & Save** -- Clipboard copy and PNG file save
+- **Native Performance** -- Pure Swift/AppKit, uses CGDisplayCreateImage for capture
 
-## Setup
+## Build & Run
 
 ```bash
-# Install dependencies
-npm install
+# Debug build + run
+swift build && .build/debug/localshot
 
-# Run in development
-npm run dev
+# Release build + bundle as .app
+swift build -c release
+bash scripts/bundle-app.sh
 
-# Build for production
-npm run build
-
-# Package as .app
-npm run package
+# Install to Applications
+cp -r LocalShot.app /Applications/
+open /Applications/LocalShot.app
 ```
 
 ## Shortcuts
@@ -44,19 +46,16 @@ npm run package
 | Highlight | H |
 | Blur | B |
 | Counter | N |
-| Crop | C |
 | Undo | Cmd+Z |
 | Delete selection | Delete/Backspace |
 
 ## Tech Stack
 
-- Electron 34
-- React 19 + TypeScript
-- Fabric.js 6 (canvas annotation)
-- Tailwind CSS
-- Lucide Icons
-- electron-vite (build tooling)
+- Swift 5.9+ / macOS 13+
+- AppKit (NSStatusItem, NSWindow, NSView, NSEvent)
+- CoreGraphics (CGDisplayCreateImage, custom drawing)
+- Swift Package Manager
 
 ## Permissions
 
-On first run, macOS will ask for Screen Recording permission. Grant it in System Settings > Privacy & Security > Screen Recording.
+On first launch, macOS will ask for **Screen Recording** permission. Grant it in System Settings > Privacy & Security > Screen Recording.
