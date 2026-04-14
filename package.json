@@ -1,0 +1,51 @@
+{
+  "name": "localshot",
+  "version": "0.1.0",
+  "description": "Local screenshot tool with annotation - CleanShot X alternative",
+  "main": "./out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "package": "electron-vite build && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
+  },
+  "dependencies": {
+    "electron-store": "^10.0.0",
+    "fabric": "^6.6.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.12.0",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@types/uuid": "^10.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^34.1.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^3.0.0",
+    "lucide-react": "^0.474.0",
+    "postcss": "^8.5.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  },
+  "build": {
+    "appId": "com.localshot.app",
+    "productName": "LocalShot",
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": "dmg",
+      "entitlements": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSScreenCaptureUsageDescription": "LocalShot needs screen capture access to take screenshots."
+      }
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}
