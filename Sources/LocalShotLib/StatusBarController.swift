@@ -6,6 +6,8 @@ public class StatusBarController {
     private let onCaptureArea: () -> Void
     private let onOpenEditor: () -> Void
     private let onQuit: () -> Void
+    private let defaultIcon: NSImage
+    private var flashToken: UInt64 = 0
 
     public init(
         onCaptureFullScreen: @escaping () -> Void,
@@ -18,12 +20,13 @@ public class StatusBarController {
         self.onOpenEditor = onOpenEditor
         self.onQuit = onQuit
 
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        // Build the template icon once and mark it template BEFORE assigning.
+        let icon = Self.drawIcon()
+        icon.isTemplate = true
+        self.defaultIcon = icon
 
-        if let button = statusItem.button {
-            button.image = Self.drawIcon()
-            button.image?.isTemplate = true
-        }
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        statusItem.button?.image = icon
 
         buildMenu()
     }
@@ -31,41 +34,22 @@ public class StatusBarController {
     private func buildMenu() {
         let menu = NSMenu()
 
-        let fullItem = NSMenuItem(title: "Capture Full Screen", action: #selector(handleFullScreen), keyEquivalent: "")
+        let fullItem = NSMenuItem(title: "Capture Full Screen", action: #selector(handleFullScreen), keyEquivalent: "s")
         fullItem.target = self
         fullItem.keyEquivalentModifierMask = [.command, .shift]
-        fullItem.keyEquivalent = "1"
         menu.addItem(fullItem)
 
-        let areaItem = NSMenuItem(title: "Capture Area", action: #selector(handleArea), keyEquivalent: "")
+        let areaItem = NSMenuItem(title: "Capture Area", action: #selector(handleArea), keyEquivalent: "a")
         areaItem.target = self
         areaItem.keyEquivalentModifierMask = [.command, .shift]
-        areaItem.keyEquivalent = "2"
         menu.addItem(areaItem)
 
         menu.addItem(NSMenuItem.separator())
 
-        let editorItem = NSMenuItem(title: "Open Editor", action: #selector(handleOpenEditor), keyEquivalent: "")
-        editorItem.target = self
-        menu.addItem(editorItem)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let shortcutsHeader = NSMenuItem(title: "Shortcuts", action: nil, keyEquivalent: "")
-        shortcutsHeader.isEnabled = false
-        menu.addItem(shortcutsHeader)
-
-        let s1 = NSMenuItem(title: "  Full Screen: Cmd+Shift+1", action: nil, keyEquivalent: "")
-        s1.isEnabled = false
-        menu.addItem(s1)
-
-        let s2 = NSMenuItem(title: "  Area Select: Cmd+Shift+2", action: nil, keyEquivalent: "")
-        s2.isEnabled = false
-        menu.addItem(s2)
-
-        menu.addItem(NSMenuItem.separator())
-
-        let quitItem = NSMenuItem(title: "Quit LocalShot", action: #selector(handleQuit), keyEquivalent: "q")
+        // No keyEquivalent: Cmd+Q only works while the menu is open for an
+        // accessory app (no main menu owns it globally), so showing ⌘Q would
+        // mislead the user into thinking it fires when another app is focused.
+        let quitItem = NSMenuItem(title: "Quit LocalShot", action: #selector(handleQuit), keyEquivalent: "")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -74,17 +58,20 @@ public class StatusBarController {
 
     @objc private func handleFullScreen() { onCaptureFullScreen() }
     @objc private func handleArea() { onCaptureArea() }
-    @objc private func handleOpenEditor() { onOpenEditor() }
     @objc private func handleQuit() { onQuit() }
 
-    /// Brief flash to indicate clipboard copy
+    /// Brief flash to indicate clipboard copy. Token-guarded so that rapid
+    /// back-to-back flashes correctly restore the real icon instead of
+    /// leaving the checkmark or restoring to a stale snapshot.
     func flashIcon() {
-        guard let button = statusItem.button else { return }
-        let original = button.image
-        button.image = Self.drawCheckIcon()
-        button.image?.isTemplate = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            button.image = original
+        flashToken &+= 1
+        let myToken = flashToken
+        let check = Self.drawCheckIcon()
+        check.isTemplate = true
+        statusItem.button?.image = check
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
+            guard let self = self, self.flashToken == myToken else { return }
+            self.statusItem.button?.image = self.defaultIcon
         }
     }
 
