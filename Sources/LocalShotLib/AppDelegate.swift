@@ -74,33 +74,46 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Capture
 
+    /// The screen the user is currently on (mouse cursor's screen).
+    /// Falls back to NSScreen.main, then to the first connected screen.
+    private func activeScreen() -> NSScreen {
+        let mouseLoc = NSEvent.mouseLocation
+        return NSScreen.screens.first(where: { NSMouseInRect(mouseLoc, $0.frame, false) })
+            ?? NSScreen.main
+            ?? NSScreen.screens[0]
+    }
+
     private func captureFullScreen() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
+            let screen = self.activeScreen()
 
-            // Always attempt the capture — CGPreflightScreenCaptureAccess can return
-            // stale results. The capture itself will return wallpaper-only if not granted,
-            // but at least it works immediately after the user grants permission.
-            guard let image = self.captureManager.captureFullScreen() else {
+            // Always attempt the capture — CGPreflightScreenCaptureAccess can
+            // return stale results. The capture itself will return wallpaper-
+            // only if not granted, but at least it works immediately after the
+            // user grants permission.
+            guard let image = self.captureManager.captureScreen(screen) else {
                 print("Capture returned nil")
                 self.promptScreenRecording()
                 return
             }
-            self.showOverlay(image: image)
+            self.showOverlay(image: image, on: screen)
         }
     }
 
     private func captureArea() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
+            let screen = self.activeScreen()
 
-            guard let fullImage = self.captureManager.captureFullScreen() else {
+            guard let fullImage = self.captureManager.captureScreen(screen) else {
                 self.promptScreenRecording()
                 return
             }
 
             self.selectionWindow = SelectionWindow(
                 screenshot: fullImage,
+                screen: screen,
                 onSelected: { [weak self] croppedImage in
                     self?.selectionWindow?.orderOut(nil)
                     self?.selectionWindow = nil
@@ -110,7 +123,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
                     // the selection window still owns the screen, leaving no
                     // visible overlay.
                     DispatchQueue.main.async {
-                        self?.showOverlay(image: croppedImage)
+                        self?.showOverlay(image: croppedImage, on: screen)
                     }
                 },
                 onCancelled: { [weak self] in
@@ -124,11 +137,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Overlay
 
-    private func showOverlay(image: NSImage) {
+    private func showOverlay(image: NSImage, on screen: NSScreen) {
         overlayAutoCloseWork?.cancel()
         overlayWindow?.close()
         overlayWindow = QuickOverlayWindow(
             image: image,
+            screen: screen,
             onCopy: { [weak self] in
                 self?.copyToClipboard(image: image)
                 self?.dismissOverlay()
@@ -145,14 +159,34 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
                 self?.dismissOverlay()
             }
         )
+        overlayWindow?.onHoverChanged = { [weak self] hovering in
+            self?.handleOverlayHover(hovering: hovering)
+        }
         overlayWindow?.orderFront(nil)
         overlayWindow?.animateIn()
 
+        scheduleOverlayAutoClose()
+    }
+
+    private func scheduleOverlayAutoClose() {
+        overlayAutoCloseWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             self?.dismissOverlay()
         }
         overlayAutoCloseWork = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
+    }
+
+    private func handleOverlayHover(hovering: Bool) {
+        if hovering {
+            // Pause the auto-close timer while the cursor is over the overlay.
+            overlayAutoCloseWork?.cancel()
+            overlayAutoCloseWork = nil
+        } else {
+            // On mouse exit, restart the countdown so the user still gets an
+            // auto-dismiss if they walked away without clicking anything.
+            scheduleOverlayAutoClose()
+        }
     }
 
     private func dismissOverlay() {
@@ -188,7 +222,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.writeObjects([image])
-        statusBar.flashIcon()
+        statusBar.flashCopied()
     }
 
     private func quickSaveToDesktop(image: NSImage) {
@@ -198,7 +232,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         guard let png = image.pngData() else { return }
         do {
             try png.write(to: url)
-            statusBar.flashIcon()
+            statusBar.flashSaved()
         } catch {
             print("Save failed: \(error.localizedDescription)")
         }

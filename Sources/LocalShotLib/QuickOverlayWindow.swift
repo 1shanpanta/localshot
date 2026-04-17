@@ -5,9 +5,13 @@ import AppKit
 public class QuickOverlayWindow: NSPanel {
     private var onAnnotateAction: (() -> Void)?
     private var onCloseAction: (() -> Void)?
+    /// Called when the mouse enters (true) or exits (false) the overlay.
+    /// AppDelegate uses this to pause the auto-close countdown.
+    public var onHoverChanged: ((Bool) -> Void)?
 
     public init(
         image: NSImage,
+        screen: NSScreen,
         onCopy: @escaping () -> Void,
         onAnnotate: @escaping () -> Void,
         onSave: @escaping () -> Void,
@@ -23,7 +27,6 @@ public class QuickOverlayWindow: NSPanel {
         let totalH = thumbH + barH
         let padding: CGFloat = 16
 
-        let screen = NSScreen.main ?? NSScreen.screens[0]
         let frame = NSRect(
             x: screen.visibleFrame.maxX - thumbW - padding,
             y: screen.visibleFrame.minY + padding,
@@ -46,13 +49,15 @@ public class QuickOverlayWindow: NSPanel {
         self.isMovableByWindowBackground = true
         self.hidesOnDeactivate = false
 
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: thumbW, height: totalH))
+        let container = HoverTrackingView(frame: NSRect(x: 0, y: 0, width: thumbW, height: totalH))
         container.wantsLayer = true
         container.layer?.cornerRadius = 10
         container.layer?.masksToBounds = true
         container.layer?.backgroundColor = NSColor(white: 0.12, alpha: 0.96).cgColor
         container.layer?.borderWidth = 0.5
         container.layer?.borderColor = NSColor(white: 1, alpha: 0.12).cgColor
+        container.onMouseEntered = { [weak self] in self?.onHoverChanged?(true) }
+        container.onMouseExited = { [weak self] in self?.onHoverChanged?(false) }
 
         // Shadow is drawn by NSWindow (hasShadow = true) — no NSShadow on the
         // container, since masksToBounds clips it and it would never render.
@@ -164,5 +169,31 @@ private class ActionButton: NSButton {
 
     @objc private func fire() {
         handler?()
+    }
+}
+
+/// NSView that emits mouse enter/exit callbacks via an auto-sized tracking area.
+private class HoverTrackingView: NSView {
+    var onMouseEntered: (() -> Void)?
+    var onMouseExited: (() -> Void)?
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        for area in trackingAreas { removeTrackingArea(area) }
+        let area = NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        )
+        addTrackingArea(area)
+    }
+
+    override func mouseEntered(with event: NSEvent) {
+        onMouseEntered?()
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        onMouseExited?()
     }
 }

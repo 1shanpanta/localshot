@@ -60,15 +60,22 @@ public class StatusBarController {
     @objc private func handleArea() { onCaptureArea() }
     @objc private func handleQuit() { onQuit() }
 
-    /// Brief flash to indicate clipboard copy. Token-guarded so that rapid
-    /// back-to-back flashes correctly restore the real icon instead of
-    /// leaving the checkmark or restoring to a stale snapshot.
-    func flashIcon() {
+    /// Copy (clipboard) — checkmark flash.
+    func flashCopied() { flash(icon: Self.drawCheckIcon()) }
+
+    /// Save (to disk) — down-arrow flash so the user can tell copy/save apart.
+    func flashSaved() { flash(icon: Self.drawSaveIcon()) }
+
+    /// Back-compat alias (equivalent to flashCopied).
+    func flashIcon() { flashCopied() }
+
+    /// Token-guarded flash so rapid back-to-back calls restore the real icon
+    /// instead of leaving a stale flash glyph.
+    private func flash(icon: NSImage) {
         flashToken &+= 1
         let myToken = flashToken
-        let check = Self.drawCheckIcon()
-        check.isTemplate = true
-        statusItem.button?.image = check
+        icon.isTemplate = true
+        statusItem.button?.image = icon
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in
             guard let self = self, self.flashToken == myToken else { return }
             self.statusItem.button?.image = self.defaultIcon
@@ -143,6 +150,37 @@ public class StatusBarController {
             ctx.move(to: CGPoint(x: 4, y: 9))
             ctx.addLine(to: CGPoint(x: 7.5, y: 13))
             ctx.addLine(to: CGPoint(x: 14, y: 5))
+            ctx.strokePath()
+
+            return true
+        }
+    }
+
+    /// Arrow pointing down into a tray — shown after a "Save to Desktop" so
+    /// the user can visually distinguish save from a plain copy-to-clipboard.
+    private static func drawSaveIcon() -> NSImage {
+        let size = NSSize(width: 18, height: 18)
+        return NSImage(size: size, flipped: false) { rect in
+            let ctx = NSGraphicsContext.current!.cgContext
+            ctx.setStrokeColor(NSColor.black.cgColor)
+            ctx.setFillColor(NSColor.black.cgColor)
+            ctx.setLineWidth(1.6)
+            ctx.setLineCap(.round)
+            ctx.setLineJoin(.round)
+
+            // Down arrow shaft + head
+            ctx.move(to: CGPoint(x: 9, y: 14))
+            ctx.addLine(to: CGPoint(x: 9, y: 6))
+            ctx.strokePath()
+
+            ctx.move(to: CGPoint(x: 5.5, y: 9))
+            ctx.addLine(to: CGPoint(x: 9, y: 5))
+            ctx.addLine(to: CGPoint(x: 12.5, y: 9))
+            ctx.strokePath()
+
+            // Tray line
+            ctx.move(to: CGPoint(x: 3, y: 3))
+            ctx.addLine(to: CGPoint(x: 15, y: 3))
             ctx.strokePath()
 
             return true

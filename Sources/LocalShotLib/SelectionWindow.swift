@@ -4,19 +4,10 @@ import AppKit
 public class SelectionWindow: NSWindow {
     public init(
         screenshot: NSImage,
+        screen: NSScreen,
         onSelected: @escaping (NSImage) -> Void,
         onCancelled: @escaping () -> Void
     ) {
-        guard let screen = NSScreen.main else {
-            super.init(
-                contentRect: .zero,
-                styleMask: [.borderless],
-                backing: .buffered,
-                defer: false
-            )
-            return
-        }
-
         super.init(
             contentRect: screen.frame,
             styleMask: [.borderless],
@@ -31,9 +22,10 @@ public class SelectionWindow: NSWindow {
         self.ignoresMouseEvents = false
         self.acceptsMouseMovedEvents = true
         self.hasShadow = false
+        self.setFrame(screen.frame, display: false)
 
         let view = SelectionView(
-            frame: screen.frame,
+            frame: NSRect(origin: .zero, size: screen.frame.size),
             screenshot: screenshot,
             onSelected: onSelected,
             onCancelled: onCancelled
