@@ -5,34 +5,56 @@ public class ScreenCaptureManager {
 
     public init() {}
 
-    /// Capture the entire primary display
-    public func captureFullScreen() -> NSImage? {
-        guard let mainDisplay = CGMainDisplayID() as CGDirectDisplayID? else { return nil }
-
-        guard let cgImage = CGDisplayCreateImage(mainDisplay) else {
-            print("CGDisplayCreateImage failed -- check Screen Recording permission")
-            return nil
-        }
-
-        let size = NSSize(
-            width: CGFloat(cgImage.width),
-            height: CGFloat(cgImage.height)
-        )
+    /// Capture all connected displays into one unified image.
+    public func captureAllDisplays() -> NSImage? {
+        guard let cgImage = CGWindowListCreateImage(
+            CGRect.null,
+            .optionOnScreenOnly,
+            kCGNullWindowID,
+            .bestResolution
+        ) else { return nil }
+        let size = NSSize(width: CGFloat(cgImage.width), height: CGFloat(cgImage.height))
         return NSImage(cgImage: cgImage, size: size)
     }
 
-    /// Capture a specific rect of the screen (in screen coordinates)
-    public func captureRect(_ rect: CGRect) -> NSImage? {
-        guard let mainDisplay = CGMainDisplayID() as CGDirectDisplayID? else { return nil }
-
-        guard let cgImage = CGDisplayCreateImage(mainDisplay, rect: rect) else {
-            return nil
-        }
-
-        let size = NSSize(
-            width: CGFloat(cgImage.width),
-            height: CGFloat(cgImage.height)
-        )
+    /// Capture a single NSScreen. Converts the NSScreen frame (bottom-left
+    /// origin, relative to the primary display) into CG global coordinates
+    /// (top-left origin, also relative to the primary display).
+    public func captureScreen(_ screen: NSScreen) -> NSImage? {
+        let rect = Self.cgRect(for: screen)
+        guard let cgImage = CGWindowListCreateImage(
+            rect,
+            .optionOnScreenOnly,
+            kCGNullWindowID,
+            .bestResolution
+        ) else { return nil }
+        let size = NSSize(width: CGFloat(cgImage.width), height: CGFloat(cgImage.height))
         return NSImage(cgImage: cgImage, size: size)
+    }
+
+    public func captureRect(_ rect: CGRect) -> NSImage? {
+        guard let cgImage = CGWindowListCreateImage(
+            rect,
+            .optionOnScreenOnly,
+            kCGNullWindowID,
+            .bestResolution
+        ) else { return nil }
+        let size = NSSize(width: CGFloat(cgImage.width), height: CGFloat(cgImage.height))
+        return NSImage(cgImage: cgImage, size: size)
+    }
+
+    /// The primary display is the one whose NSScreen origin is (0,0).
+    /// CG global coords have origin at the top-left of that display.
+    private static func cgRect(for screen: NSScreen) -> CGRect {
+        let primary = NSScreen.screens.first(where: { $0.frame.origin == .zero })
+            ?? NSScreen.screens.first
+            ?? screen
+        let primaryHeight = primary.frame.height
+        return CGRect(
+            x: screen.frame.origin.x,
+            y: primaryHeight - screen.frame.origin.y - screen.frame.height,
+            width: screen.frame.width,
+            height: screen.frame.height
+        )
     }
 }
