@@ -1,7 +1,11 @@
 import AppKit
 
-/// Small floating thumbnail shown in the corner after a capture, with quick action buttons
+/// Small floating thumbnail shown in the corner after a capture, with quick action buttons.
+/// Positioned bottom-right like CleanShot X. Draggable. Click thumbnail to annotate.
 public class QuickOverlayWindow: NSPanel {
+    private var onAnnotateAction: (() -> Void)?
+    private var onCloseAction: (() -> Void)?
+
     public init(
         image: NSImage,
         onCopy: @escaping () -> Void,
@@ -9,12 +13,15 @@ public class QuickOverlayWindow: NSPanel {
         onSave: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
-        let thumbW: CGFloat = 280
+        self.onAnnotateAction = onAnnotate
+        self.onCloseAction = onClose
+
+        let thumbW: CGFloat = 300
         let imgAspect = image.size.height / max(image.size.width, 1)
         let thumbH = thumbW * min(imgAspect, 0.75)
-        let barH: CGFloat = 40
+        let barH: CGFloat = 44
         let totalH = thumbH + barH
-        let padding: CGFloat = 20
+        let padding: CGFloat = 16
 
         let screen = NSScreen.main ?? NSScreen.screens[0]
         let frame = NSRect(
@@ -41,17 +48,21 @@ public class QuickOverlayWindow: NSPanel {
 
         let container = NSView(frame: NSRect(x: 0, y: 0, width: thumbW, height: totalH))
         container.wantsLayer = true
-        container.layer?.cornerRadius = 12
+        container.layer?.cornerRadius = 10
         container.layer?.masksToBounds = true
-        container.layer?.backgroundColor = NSColor(white: 0.1, alpha: 0.95).cgColor
-        container.layer?.borderWidth = 1
-        container.layer?.borderColor = NSColor(white: 1, alpha: 0.1).cgColor
+        container.layer?.backgroundColor = NSColor(white: 0.12, alpha: 0.96).cgColor
+        container.layer?.borderWidth = 0.5
+        container.layer?.borderColor = NSColor(white: 1, alpha: 0.12).cgColor
 
-        // Thumbnail image
-        let imageView = NSImageView(frame: NSRect(x: 0, y: barH, width: thumbW, height: thumbH))
+        // Shadow is drawn by NSWindow (hasShadow = true) — no NSShadow on the
+        // container, since masksToBounds clips it and it would never render.
+
+        // Thumbnail image — clicking opens editor
+        let imageView = ClickableImageView(frame: NSRect(x: 0, y: barH, width: thumbW, height: thumbH))
         imageView.image = image
         imageView.imageScaling = .scaleProportionallyUpOrDown
         imageView.wantsLayer = true
+        imageView.onClick = onAnnotate
         container.addSubview(imageView)
 
         // Action bar
@@ -59,48 +70,83 @@ public class QuickOverlayWindow: NSPanel {
         bar.wantsLayer = true
         bar.layer?.backgroundColor = NSColor(white: 0.08, alpha: 1).cgColor
 
+        let buttonSpacing: CGFloat = 6
+        let buttonH: CGFloat = 30
+        let buttonY: CGFloat = (barH - buttonH) / 2
         var btnX: CGFloat = 8
 
-        let copyBtn = makeButton(title: "Copy", x: btnX) { onCopy() }
+        let copyBtn = makeButton(title: "Copy", x: btnX, y: buttonY, width: 60, height: buttonH) { onCopy() }
         bar.addSubview(copyBtn)
-        btnX += 68
+        btnX += 60 + buttonSpacing
 
-        let annotateBtn = makeButton(title: "Annotate", x: btnX) { onAnnotate() }
+        let annotateBtn = makeButton(title: "Annotate", x: btnX, y: buttonY, width: 72, height: buttonH) { onAnnotate() }
         bar.addSubview(annotateBtn)
-        btnX += 78
+        btnX += 72 + buttonSpacing
 
-        let saveBtn = makeButton(title: "Save", x: btnX) { onSave() }
+        let saveBtn = makeButton(title: "Save", x: btnX, y: buttonY, width: 54, height: buttonH) { onSave() }
         bar.addSubview(saveBtn)
 
         // Close button (right side)
-        let closeBtn = makeButton(title: "\u{2715}", x: thumbW - 32) { onClose() }
-        closeBtn.frame.size.width = 26
-        closeBtn.font = NSFont.systemFont(ofSize: 11)
-        closeBtn.contentTintColor = NSColor(white: 0.4, alpha: 1)
+        let closeBtn = makeButton(title: "\u{2715}", x: thumbW - 34, y: buttonY, width: 28, height: buttonH) { onClose() }
+        closeBtn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
+        closeBtn.contentTintColor = NSColor(white: 0.45, alpha: 1)
+        closeBtn.layer?.backgroundColor = NSColor.clear.cgColor
         bar.addSubview(closeBtn)
 
         container.addSubview(bar)
         self.contentView = container
 
-        // Fade-in animation
+        // Start transparent; caller orders front, then animateIn() fades + slides up.
         self.alphaValue = 0
+    }
+
+    /// Fade + slide-up once the window is on screen. Call AFTER orderFront.
+    public func animateIn() {
+        let finalFrame = self.frame
+        var startFrame = finalFrame
+        startFrame.origin.y -= 20
+        // display:false avoids a visible flash at the offset position before
+        // the animator takes over.
+        self.setFrame(startFrame, display: false)
+
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.25
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
             self.animator().alphaValue = 1
+            self.animator().setFrame(finalFrame, display: true)
         }
     }
 
-    private func makeButton(title: String, x: CGFloat, action: @escaping () -> Void) -> NSButton {
+
+    override public func keyDown(with event: NSEvent) {
+        if event.keyCode == 53 { // Escape
+            onCloseAction?()
+        } else {
+            super.keyDown(with: event)
+        }
+    }
+
+    private func makeButton(title: String, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat, action: @escaping () -> Void) -> NSButton {
         let btn = ActionButton(title: title, action: action)
-        btn.frame = NSRect(x: x, y: 6, width: 64, height: 28)
+        btn.frame = NSRect(x: x, y: y, width: width, height: height)
         btn.bezelStyle = .recessed
         btn.isBordered = false
-        btn.font = NSFont.systemFont(ofSize: 11, weight: .medium)
+        btn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         btn.contentTintColor = .white
         btn.wantsLayer = true
         btn.layer?.cornerRadius = 6
         btn.layer?.backgroundColor = NSColor(white: 1, alpha: 0.08).cgColor
         return btn
+    }
+}
+
+/// NSImageView that fires a closure on click
+private class ClickableImageView: NSImageView {
+    var onClick: (() -> Void)?
+
+    override func mouseDown(with event: NSEvent) {
+        super.mouseDown(with: event)
+        onClick?()
     }
 }
 
