@@ -1,5 +1,4 @@
 import AppKit
-import CoreImage
 
 // MARK: - Protocol
 
@@ -125,12 +124,10 @@ public class ArrowAnnotation: Annotation {
         ctx.setLineWidth(strokeWidth)
         ctx.setLineCap(.round)
 
-        // Line
         ctx.move(to: start)
         ctx.addLine(to: end)
         ctx.strokePath()
 
-        // Arrowhead
         let angle = atan2(end.y - start.y, end.x - start.x)
         let headLen = max(12, strokeWidth * 4)
         let p1 = CGPoint(x: end.x - headLen * cos(angle - .pi / 6), y: end.y - headLen * sin(angle - .pi / 6))
@@ -210,8 +207,6 @@ public class TextAnnotation: Annotation {
     public var origin: NSPoint
     public var text: String
     public var fontSize: CGFloat
-
-    private var cachedSize: NSSize = .zero
 
     public var bounds: NSRect {
         let size = textSize
@@ -355,6 +350,7 @@ public class BlurAnnotation: Annotation {
     public var isSelected = false
     public var origin: NSPoint
     public var size: NSSize
+    public weak var sourceImageProvider: BlurImageProvider?
 
     public var bounds: NSRect { NSRect(origin: origin, size: size) }
 
@@ -364,21 +360,85 @@ public class BlurAnnotation: Annotation {
     }
 
     public func draw(in ctx: CGContext, viewBounds: NSRect) {
-        // Draw a pixelated mosaic to simulate blur
-        let blockSize: CGFloat = 8
+        let blockSize: CGFloat = 10
         let rect = bounds
+        guard rect.width > 1 && rect.height > 1 else { return }
 
-        for y in stride(from: rect.minY, to: rect.maxY, by: blockSize) {
-            for x in stride(from: rect.minX, to: rect.maxX, by: blockSize) {
-                let gray = CGFloat.random(in: 0.45...0.75)
-                ctx.setFillColor(NSColor(white: gray, alpha: 0.85).cgColor)
-                let w = min(blockSize, rect.maxX - x)
-                let h = min(blockSize, rect.maxY - y)
-                ctx.fill(CGRect(x: x, y: y, width: w, height: h))
+        // Try to pixelate from actual image data
+        if let provider = sourceImageProvider,
+           let image = provider.imageForBlur,
+           let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
+            let imageRect = provider.imageDrawRectForBlur
+
+            for y in stride(from: rect.minY, to: rect.maxY, by: blockSize) {
+                for x in stride(from: rect.minX, to: rect.maxX, by: blockSize) {
+                    let w = min(blockSize, rect.maxX - x)
+                    let h = min(blockSize, rect.maxY - y)
+                    let sampleX = x + w / 2
+                    let sampleY = y + h / 2
+
+                    // Map view coords to image pixel coords
+                    let imgX = Int((sampleX - imageRect.minX) / imageRect.width * CGFloat(cgImage.width))
+                    let imgY = Int((1.0 - (sampleY - imageRect.minY) / imageRect.height) * CGFloat(cgImage.height))
+
+                    if imgX >= 0 && imgX < cgImage.width && imgY >= 0 && imgY < cgImage.height,
+                       let pixelColor = samplePixel(cgImage: cgImage, x: imgX, y: imgY) {
+                        ctx.setFillColor(pixelColor)
+                    } else {
+                        ctx.setFillColor(NSColor(white: 0.5, alpha: 0.85).cgColor)
+                    }
+                    ctx.fill(CGRect(x: x, y: y, width: w, height: h))
+                }
+            }
+        } else {
+            // Fallback: deterministic gray pattern seeded by position
+            for y in stride(from: rect.minY, to: rect.maxY, by: blockSize) {
+                for x in stride(from: rect.minX, to: rect.maxX, by: blockSize) {
+                    let seed = (Int(x) * 73 + Int(y) * 137) & 0xFF
+                    let gray = 0.4 + CGFloat(seed) / 255.0 * 0.35
+                    ctx.setFillColor(NSColor(white: gray, alpha: 0.85).cgColor)
+                    let w = min(blockSize, rect.maxX - x)
+                    let h = min(blockSize, rect.maxY - y)
+                    ctx.fill(CGRect(x: x, y: y, width: w, height: h))
+                }
             }
         }
 
         if isSelected { drawSelectionHandles(ctx: ctx, rect: bounds) }
+    }
+
+    private func samplePixel(cgImage: CGImage, x: Int, y: Int) -> CGColor? {
+        guard let dataProvider = cgImage.dataProvider,
+              let data = dataProvider.data,
+              let ptr = CFDataGetBytePtr(data) else { return nil }
+
+        let bytesPerPixel = cgImage.bitsPerPixel / 8
+        let bytesPerRow = cgImage.bytesPerRow
+        let offset = y * bytesPerRow + x * bytesPerPixel
+
+        guard offset + 2 < CFDataGetLength(data) else { return nil }
+
+        let rawInfo = cgImage.bitmapInfo
+        let byteOrder = CGImageByteOrderInfo(rawValue: rawInfo.rawValue & CGBitmapInfo.byteOrderMask.rawValue) ?? .orderDefault
+        let alphaInfo = CGImageAlphaInfo(rawValue: rawInfo.rawValue & CGBitmapInfo.alphaInfoMask.rawValue) ?? .none
+
+        // macOS screen captures are typically BGRA: 32Little + alpha first-skip or premultiplied-first
+        let isBGRA = byteOrder == .order32Little &&
+            (alphaInfo == .noneSkipFirst || alphaInfo == .premultipliedFirst || alphaInfo == .first)
+
+        let r: CGFloat
+        let g: CGFloat
+        let b: CGFloat
+        if isBGRA {
+            b = CGFloat(ptr[offset]) / 255.0
+            g = CGFloat(ptr[offset + 1]) / 255.0
+            r = CGFloat(ptr[offset + 2]) / 255.0
+        } else {
+            r = CGFloat(ptr[offset]) / 255.0
+            g = CGFloat(ptr[offset + 1]) / 255.0
+            b = CGFloat(ptr[offset + 2]) / 255.0
+        }
+        return CGColor(red: r, green: g, blue: b, alpha: 1.0)
     }
 
     public func hitTest(point: NSPoint) -> Bool {
@@ -389,6 +449,12 @@ public class BlurAnnotation: Annotation {
         origin.x += delta.x
         origin.y += delta.y
     }
+}
+
+/// Protocol for BlurAnnotation to access the source image without tight coupling
+public protocol BlurImageProvider: AnyObject {
+    var imageForBlur: NSImage? { get }
+    var imageDrawRectForBlur: NSRect { get }
 }
 
 // MARK: - Counter
@@ -413,11 +479,9 @@ public class CounterAnnotation: Annotation {
     }
 
     public func draw(in ctx: CGContext, viewBounds: NSRect) {
-        // Filled circle
         ctx.setFillColor(color.cgColor)
         ctx.fillEllipse(in: bounds)
 
-        // White number
         NSGraphicsContext.saveGraphicsState()
         let str = "\(number)" as NSString
         let font = NSFont.systemFont(ofSize: 14, weight: .bold)

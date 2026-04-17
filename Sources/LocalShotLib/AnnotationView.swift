@@ -1,7 +1,7 @@
 import AppKit
 
 /// Custom NSView that renders the screenshot + annotations and handles drawing interactions
-public class AnnotationView: NSView {
+public class AnnotationView: NSView, BlurImageProvider {
     public var image: NSImage? { didSet { needsDisplay = true } }
     public var annotations: [Annotation] = []
     public var activeTool: AnnotationToolType = .rectangle
@@ -27,29 +27,19 @@ public class AnnotationView: NSView {
     override public var acceptsFirstResponder: Bool { true }
     override public var isFlipped: Bool { false }
 
+    // MARK: - BlurImageProvider
+
+    public var imageForBlur: NSImage? { image }
+    public var imageDrawRectForBlur: NSRect { imageDrawRect }
+
     override public func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
-        // Background
         ctx.setFillColor(NSColor(white: 0.08, alpha: 1).cgColor)
         ctx.fill(bounds)
 
-        // Draw the screenshot
-        if let image = image,
-           let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-            let imageRect = imageDrawRect
-            ctx.saveGState()
-            // Flip for correct orientation
-            ctx.translateBy(x: 0, y: bounds.height)
-            ctx.scaleBy(x: 1, y: -1)
-            let flippedRect = CGRect(
-                x: imageRect.origin.x,
-                y: bounds.height - imageRect.origin.y - imageRect.height,
-                width: imageRect.width,
-                height: imageRect.height
-            )
-            ctx.draw(cgImage, in: flippedRect)
-            ctx.restoreGState()
+        if let image = image {
+            image.draw(in: imageDrawRect, from: .zero, operation: .sourceOver, fraction: 1.0)
         }
 
         // Draw all annotations
@@ -141,6 +131,7 @@ public class AnnotationView: NSView {
             inProgressAnnotation = a
         case .blur:
             let a = BlurAnnotation(origin: point, size: .zero)
+            a.sourceImageProvider = self
             inProgressAnnotation = a
         default:
             break
@@ -195,6 +186,10 @@ public class AnnotationView: NSView {
             // Only add if it has meaningful size
             let b = annotation.bounds
             if b.width > 3 || b.height > 3 || annotation is FreehandAnnotation {
+                // Ensure blur annotations keep their image provider reference
+                if let blur = annotation as? BlurAnnotation {
+                    blur.sourceImageProvider = self
+                }
                 annotations.append(annotation)
                 onAnnotationsChanged?()
             }
@@ -204,7 +199,13 @@ public class AnnotationView: NSView {
         needsDisplay = true
     }
 
+    // Callbacks for window-level actions
+    public var onCopyRequest: (() -> Void)?
+    public var onSaveRequest: (() -> Void)?
+
     override public func keyDown(with event: NSEvent) {
+        let hasCmd = event.modifierFlags.contains(.command)
+
         // Delete/Backspace to remove selected
         if event.keyCode == 51 || event.keyCode == 117 { // Backspace / Delete
             if let selected = selectedAnnotation {
@@ -216,21 +217,53 @@ public class AnnotationView: NSView {
             }
         }
 
-        // Cmd+Z undo
-        if event.modifierFlags.contains(.command) && event.keyCode == 6 { // Z
-            if !annotations.isEmpty {
-                annotations.removeLast()
-                onAnnotationsChanged?()
+        // Cmd+Z undo (ignore if Shift is held — no redo support)
+        if hasCmd && event.keyCode == 6 && !event.modifierFlags.contains(.shift) {
+            undo()
+            return
+        }
+
+        // Cmd+C copy
+        if hasCmd && event.keyCode == 8 { // C
+            onCopyRequest?()
+            return
+        }
+
+        // Cmd+S save
+        if hasCmd && event.keyCode == 1 { // S
+            onSaveRequest?()
+            return
+        }
+
+        // Cmd+W close window — commit any in-progress text first so the
+        // NSTextField doesn't orphan in the view hierarchy.
+        if hasCmd && event.keyCode == 13 { // W
+            commitTextEditing()
+            window?.performClose(nil)
+            return
+        }
+
+        // Escape deselects or switches to select tool
+        if event.keyCode == 53 { // Escape
+            if selectedAnnotation != nil {
+                selectedAnnotation?.isSelected = false
+                selectedAnnotation = nil
                 needsDisplay = true
+            } else {
+                activeTool = .select
+                onAnnotationsChanged?()
             }
             return
         }
 
-        // Tool shortcuts (only when no modifiers)
-        if event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty {
+        // Tool shortcuts (only when no real modifiers — CapsLock is ignored so
+        // shortcuts still work when the user has CapsLock on).
+        let realModifiers: NSEvent.ModifierFlags = [.command, .shift, .control, .option]
+        if event.modifierFlags.intersection(realModifiers).isEmpty {
             for tool in AnnotationToolType.allCases {
                 if event.keyCode == tool.keyCode {
                     activeTool = tool
+                    if tool == .counter { counterValue = 1 }
                     onAnnotationsChanged?()
                     return
                 }
@@ -243,7 +276,14 @@ public class AnnotationView: NSView {
     // MARK: - Text Editing
 
     private func showTextField(at point: NSPoint) {
-        let field = NSTextField(frame: NSRect(x: point.x, y: point.y - 12, width: 200, height: 28))
+        let fieldW: CGFloat = 200
+        let fieldH: CGFloat = 28
+
+        // Clamp to view bounds so the field doesn't go off-screen
+        let x = min(max(point.x, 0), bounds.width - fieldW)
+        let y = min(max(point.y - 12, 0), bounds.height - fieldH)
+
+        let field = NSTextField(frame: NSRect(x: x, y: y, width: fieldW, height: fieldH))
         field.font = NSFont.systemFont(ofSize: activeFontSize, weight: .bold)
         field.textColor = activeColor
         field.backgroundColor = NSColor.white.withAlphaComponent(0.1)
@@ -294,10 +334,7 @@ public class AnnotationView: NSView {
             return nil
         }
 
-        // Draw the original screenshot at full resolution
-        if let cgImage = image.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-            ctx.draw(cgImage, in: CGRect(origin: .zero, size: imgSize))
-        }
+        image.draw(in: NSRect(origin: .zero, size: imgSize), from: .zero, operation: .sourceOver, fraction: 1.0)
 
         // Scale annotations from view coords to image coords
         let viewRect = imageDrawRect
@@ -335,12 +372,4 @@ public class AnnotationView: NSView {
         needsDisplay = true
     }
 
-    public func deleteSelected() {
-        if let selected = selectedAnnotation {
-            annotations.removeAll { $0.id == selected.id }
-            selectedAnnotation = nil
-            onAnnotationsChanged?()
-            needsDisplay = true
-        }
-    }
 }

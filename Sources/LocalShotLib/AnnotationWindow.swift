@@ -4,8 +4,11 @@ import AppKit
 public class AnnotationWindow: NSWindow {
     private let annotationView: AnnotationView
     private var toolButtons: [AnnotationToolType: NSButton] = [:]
-    private var colorButtons: [NSColor: NSButton] = [:]
+    // Keyed by index into defaultColors, not NSColor — NSColor equality across
+    // color spaces is unreliable and breaks swatch-highlight lookups.
+    private var colorButtons: [Int: NSButton] = [:]
     private var strokeButtons: [CGFloat: NSButton] = [:]
+    private var strokeDots: [CGFloat: NSView] = [:]
 
     public init(image: NSImage) {
         annotationView = AnnotationView()
@@ -16,10 +19,16 @@ public class AnnotationWindow: NSWindow {
         let maxW = screen.visibleFrame.width * 0.85
         let maxH = screen.visibleFrame.height * 0.85
         let scale = min(maxW / image.size.width, maxH / image.size.height, 1)
-        let canvasW = image.size.width * scale
-        let canvasH = image.size.height * scale
         let sidebarW: CGFloat = 180
         let titleBarH: CGFloat = 38
+
+        // Floor to keep the sidebar usable: it packs 10 tool buttons + color
+        // row + stroke row + 4 action buttons which together need ~450pt of
+        // height. Without a floor, tiny crops produce an unusable editor.
+        let minCanvasW: CGFloat = 320
+        let minCanvasH: CGFloat = 460
+        let canvasW = max(image.size.width * scale, minCanvasW)
+        let canvasH = max(image.size.height * scale, minCanvasH)
 
         let windowW = canvasW + sidebarW
         let windowH = canvasH + titleBarH
@@ -33,7 +42,7 @@ public class AnnotationWindow: NSWindow {
 
         super.init(
             contentRect: frame,
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable],
             backing: .buffered,
             defer: false
         )
@@ -42,8 +51,7 @@ public class AnnotationWindow: NSWindow {
         self.backgroundColor = NSColor(white: 0.1, alpha: 1)
         self.titlebarAppearsTransparent = true
         self.titleVisibility = .hidden
-        self.isMovableByWindowBackground = true
-        self.minSize = NSSize(width: 500, height: 400)
+        self.isMovableByWindowBackground = false
 
         let contentView = NSView(frame: NSRect(x: 0, y: 0, width: windowW, height: windowH - titleBarH))
         contentView.wantsLayer = true
@@ -66,6 +74,10 @@ public class AnnotationWindow: NSWindow {
 
         self.contentView = contentView
         updateToolSelection()
+
+        // Wire up keyboard shortcut callbacks
+        annotationView.onCopyRequest = { [weak self] in self?.handleCopy() }
+        annotationView.onSaveRequest = { [weak self] in self?.saveAnnotatedImage() }
 
         // Make canvas first responder
         makeFirstResponder(annotationView)
@@ -111,10 +123,11 @@ public class AnnotationWindow: NSWindow {
         y -= 8
         let colorRow = NSView(frame: NSRect(x: 12, y: y - 28, width: sidebarW - 24, height: 28))
         var cx: CGFloat = 0
-        for color in defaultColors {
+        for (index, color) in defaultColors.enumerated() {
             let btn = makeColorButton(color: color, x: cx)
+            btn.tag = index
             colorRow.addSubview(btn)
-            colorButtons[color] = btn
+            colorButtons[index] = btn
             cx += 22
         }
         sidebar.addSubview(colorRow)
@@ -216,6 +229,7 @@ public class AnnotationWindow: NSWindow {
         dot.layer?.cornerRadius = min(width + 1, 8)
         dot.layer?.backgroundColor = annotationView.activeColor.cgColor
         btn.addSubview(dot)
+        strokeDots[width] = dot
 
         return btn
     }
@@ -275,10 +289,22 @@ public class AnnotationWindow: NSWindow {
     }
 
     @objc private func colorSelected(_ sender: NSButton) {
-        guard let color = sender.layer?.backgroundColor.flatMap({ NSColor(cgColor: $0) }) else { return }
-        annotationView.activeColor = color
+        let idx = sender.tag
+        guard idx >= 0 && idx < defaultColors.count else { return }
+        annotationView.activeColor = defaultColors[idx]
+        refreshStrokeDotColors()
         updateColorSelection()
         makeFirstResponder(annotationView)
+    }
+
+    private var activeColorIndex: Int? {
+        defaultColors.firstIndex(where: { $0 == annotationView.activeColor })
+    }
+
+    private func refreshStrokeDotColors() {
+        for (_, dot) in strokeDots {
+            dot.layer?.backgroundColor = annotationView.activeColor.cgColor
+        }
     }
 
     @objc private func strokeSelected(_ sender: NSButton) {
@@ -293,10 +319,18 @@ public class AnnotationWindow: NSWindow {
         pb.clearContents()
         pb.writeObjects([image])
 
-        // Visual feedback
-        title = "Copied!"
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-            self?.title = "LocalShot"
+        // Green flash feedback like CleanShot
+        if let content = contentView {
+            let flash = NSView(frame: content.bounds)
+            flash.wantsLayer = true
+            flash.layer?.backgroundColor = NSColor(red: 0.2, green: 0.83, blue: 0.6, alpha: 0.15).cgColor
+            content.addSubview(flash)
+            NSAnimationContext.runAnimationGroup({ ctx in
+                ctx.duration = 0.5
+                flash.animator().alphaValue = 0
+            }, completionHandler: {
+                flash.removeFromSuperview()
+            })
         }
     }
 
@@ -305,15 +339,17 @@ public class AnnotationWindow: NSWindow {
 
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "localshot-\(Int(Date().timeIntervalSince1970)).png"
+        panel.nameFieldStringValue = screenshotFilename()
         panel.canCreateDirectories = true
 
         panel.beginSheetModal(for: self) { response in
-            guard response == .OK, let url = panel.url else { return }
-            guard let tiff = image.tiffRepresentation,
-                  let bitmap = NSBitmapImageRep(data: tiff),
-                  let png = bitmap.representation(using: .png, properties: [:]) else { return }
-            try? png.write(to: url)
+            guard response == .OK, let url = panel.url,
+                  let png = image.pngData() else { return }
+            do {
+                try png.write(to: url)
+            } catch {
+                print("Save failed: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -342,8 +378,9 @@ public class AnnotationWindow: NSWindow {
     }
 
     private func updateColorSelection() {
-        for (color, btn) in colorButtons {
-            let isSelected = color == annotationView.activeColor
+        let selectedIdx = activeColorIndex
+        for (idx, btn) in colorButtons {
+            let isSelected = (idx == selectedIdx)
             btn.layer?.borderWidth = isSelected ? 2 : 0
             btn.layer?.borderColor = NSColor.white.cgColor
         }
