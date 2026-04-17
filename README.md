@@ -10,10 +10,10 @@ Built with Swift + AppKit. No Electron, no web views -- pure native.
 - **Annotation Editor** -- Rectangle (red boxes!), ellipse, arrow, line, text, freehand, highlight, blur, counter badges
 - **Quick Access Overlay** -- Floating thumbnail after capture with one-click copy/save/annotate
 - **Menu Bar App** -- Lives in your menu bar, no dock icon
-- **Global Shortcuts** -- Cmd+Shift+1 (full screen), Cmd+Shift+2 (area select)
+- **Global Shortcuts** -- Cmd+Shift+S (full screen), Cmd+Shift+A (area select)
 - **Keyboard-Driven** -- Every tool has a single-key shortcut (V, R, A, T, P, etc.)
 - **Copy & Save** -- Clipboard copy and PNG file save
-- **Native Performance** -- Pure Swift/AppKit, uses CGDisplayCreateImage for capture
+- **Native Performance** -- Pure Swift/AppKit, uses CGWindowListCreateImage for capture
 
 ## Build & Run
 
@@ -34,8 +34,8 @@ open /Applications/LocalShot.app
 
 | Action | Shortcut |
 |--------|----------|
-| Full screen capture | Cmd+Shift+1 |
-| Area capture | Cmd+Shift+2 |
+| Full screen capture | Cmd+Shift+S |
+| Area capture | Cmd+Shift+A |
 | Select tool | V |
 | Rectangle | R |
 | Ellipse | E |
@@ -53,7 +53,7 @@ open /Applications/LocalShot.app
 
 - Swift 5.9+ / macOS 13+
 - AppKit (NSStatusItem, NSWindow, NSView, NSEvent)
-- CoreGraphics (CGDisplayCreateImage, custom drawing)
+- CoreGraphics (CGWindowListCreateImage, custom drawing)
 - Swift Package Manager
 
 ## Permissions
