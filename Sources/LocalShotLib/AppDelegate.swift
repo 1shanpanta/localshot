@@ -7,6 +7,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     private var editorWindow: AnnotationWindow?
     private var selectionWindow: SelectionWindow?
     private var overlayWindow: QuickOverlayWindow?
+    private var overlayAutoCloseWork: DispatchWorkItem?
 
     public override init() {
         super.init()
@@ -32,17 +33,57 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             }
         )
 
-        print("LocalShot running. Use Cmd+Shift+1 (fullscreen) or Cmd+Shift+2 (area).")
+        print("LocalShot running. Cmd+Shift+S (fullscreen), Cmd+Shift+A (area).")
+
+        // Trigger the system prompt on first launch. If later the user tries to
+        // capture and it still returns nil, captureFullScreen/captureArea will
+        // call promptScreenRecording() to guide them to System Settings.
+        if !CGPreflightScreenCaptureAccess() {
+            print("Screen Recording: NOT granted — requesting")
+            CGRequestScreenCaptureAccess()
+        } else {
+            print("Screen Recording: granted")
+        }
     }
 
-    // MARK: - Capture Actions
+    // MARK: - Permission
+
+    private func promptScreenRecording() {
+        // Temporarily become a regular app so we can show an alert
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.messageText = "Screen Recording Permission Required"
+        alert.informativeText = "LocalShot needs Screen Recording to capture windows (not just wallpaper).\n\n1. Click \"Open Settings\" below\n2. Find LocalShot and toggle it ON\n3. Quit and relaunch LocalShot"
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Later")
+
+        let response = alert.runModal()
+
+        // Go back to accessory (menu bar only)
+        NSApp.setActivationPolicy(.accessory)
+
+        if response == .alertFirstButtonReturn {
+            if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
+                NSWorkspace.shared.open(url)
+            }
+        }
+    }
+
+    // MARK: - Capture
 
     private func captureFullScreen() {
-        // Small delay to let menu close
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
+
+            // Always attempt the capture — CGPreflightScreenCaptureAccess can return
+            // stale results. The capture itself will return wallpaper-only if not granted,
+            // but at least it works immediately after the user grants permission.
             guard let image = self.captureManager.captureFullScreen() else {
-                print("Screen capture failed")
+                print("Capture returned nil")
+                self.promptScreenRecording()
                 return
             }
             self.showOverlay(image: image)
@@ -50,20 +91,27 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func captureArea() {
-        // First capture full screen, then show selection overlay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
+
             guard let fullImage = self.captureManager.captureFullScreen() else {
-                print("Screen capture failed")
+                self.promptScreenRecording()
                 return
             }
 
             self.selectionWindow = SelectionWindow(
                 screenshot: fullImage,
                 onSelected: { [weak self] croppedImage in
-                    self?.selectionWindow?.close()
+                    self?.selectionWindow?.orderOut(nil)
                     self?.selectionWindow = nil
-                    self?.showOverlay(image: croppedImage)
+                    // Defer to the next runloop tick so the selection window is
+                    // fully torn down before the overlay panel orders front —
+                    // otherwise the overlay's slide-up animation can fire while
+                    // the selection window still owns the screen, leaving no
+                    // visible overlay.
+                    DispatchQueue.main.async {
+                        self?.showOverlay(image: croppedImage)
+                    }
                 },
                 onCancelled: { [weak self] in
                     self?.selectionWindow?.close()
@@ -74,38 +122,47 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    // MARK: - Overlay
+
     private func showOverlay(image: NSImage) {
+        overlayAutoCloseWork?.cancel()
         overlayWindow?.close()
         overlayWindow = QuickOverlayWindow(
             image: image,
             onCopy: { [weak self] in
                 self?.copyToClipboard(image: image)
-                self?.overlayWindow?.close()
-                self?.overlayWindow = nil
+                self?.dismissOverlay()
             },
             onAnnotate: { [weak self] in
-                self?.overlayWindow?.close()
-                self?.overlayWindow = nil
                 self?.openEditor(with: image)
+                self?.dismissOverlay()
             },
             onSave: { [weak self] in
-                self?.saveImage(image: image)
-                self?.overlayWindow?.close()
-                self?.overlayWindow = nil
+                self?.quickSaveToDesktop(image: image)
+                self?.dismissOverlay()
             },
             onClose: { [weak self] in
-                self?.overlayWindow?.close()
-                self?.overlayWindow = nil
+                self?.dismissOverlay()
             }
         )
         overlayWindow?.orderFront(nil)
+        overlayWindow?.animateIn()
 
-        // Auto-close after 8 seconds
-        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
-            self?.overlayWindow?.close()
-            self?.overlayWindow = nil
+        let work = DispatchWorkItem { [weak self] in
+            self?.dismissOverlay()
         }
+        overlayAutoCloseWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: work)
     }
+
+    private func dismissOverlay() {
+        overlayAutoCloseWork?.cancel()
+        overlayAutoCloseWork = nil
+        overlayWindow?.close()
+        overlayWindow = nil
+    }
+
+    // MARK: - Editor
 
     private func openEditor(with image: NSImage) {
         if let existing = editorWindow, existing.isVisible {
@@ -122,7 +179,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        // Nothing to show without an image
         captureFullScreen()
     }
 
@@ -135,17 +191,32 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         statusBar.flashIcon()
     }
 
-    private func saveImage(image: NSImage) {
-        let panel = NSSavePanel()
-        panel.allowedContentTypes = [.png]
-        panel.nameFieldStringValue = "localshot-\(Int(Date().timeIntervalSince1970)).png"
-        panel.canCreateDirectories = true
+    private func quickSaveToDesktop(image: NSImage) {
+        let desktop = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Desktop")
+        let url = desktop.appendingPathComponent(screenshotFilename())
 
-        if panel.runModal() == .OK, let url = panel.url {
-            guard let tiff = image.tiffRepresentation,
-                  let bitmap = NSBitmapImageRep(data: tiff),
-                  let png = bitmap.representation(using: .png, properties: [:]) else { return }
-            try? png.write(to: url)
+        guard let png = image.pngData() else { return }
+        do {
+            try png.write(to: url)
+            statusBar.flashIcon()
+        } catch {
+            print("Save failed: \(error.localizedDescription)")
         }
+    }
+}
+
+// MARK: - Shared Helpers
+
+func screenshotFilename() -> String {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+    return "LocalShot \(formatter.string(from: Date())).png"
+}
+
+extension NSImage {
+    func pngData() -> Data? {
+        guard let tiff = tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff) else { return nil }
+        return bitmap.representation(using: .png, properties: [:])
     }
 }
