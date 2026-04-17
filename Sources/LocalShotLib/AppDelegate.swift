@@ -200,6 +200,24 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func openEditor(with image: NSImage) {
         if let existing = editorWindow, existing.isVisible {
+            if existing.hasUnsavedAnnotations {
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate(ignoringOtherApps: true)
+
+                let alert = NSAlert()
+                alert.messageText = "Discard annotations?"
+                alert.informativeText = "The current editor has unsaved annotations. Opening a new capture will discard them."
+                alert.alertStyle = .warning
+                alert.addButton(withTitle: "Discard")
+                alert.addButton(withTitle: "Cancel")
+                let response = alert.runModal()
+                NSApp.setActivationPolicy(.accessory)
+
+                if response != .alertFirstButtonReturn {
+                    existing.makeKeyAndOrderFront(nil)
+                    return
+                }
+            }
             existing.close()
         }
         editorWindow = AnnotationWindow(image: image)

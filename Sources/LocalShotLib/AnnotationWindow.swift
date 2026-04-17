@@ -3,6 +3,11 @@ import AppKit
 /// Main editor window with annotation canvas + sidebar toolbar
 public class AnnotationWindow: NSWindow {
     private let annotationView: AnnotationView
+
+    /// True if the editor canvas has any annotations the user drew.
+    /// AppDelegate checks this before silently replacing a visible editor.
+    public var hasUnsavedAnnotations: Bool { !annotationView.annotations.isEmpty }
+
     private var toolButtons: [AnnotationToolType: NSButton] = [:]
     // Keyed by index into defaultColors, not NSColor — NSColor equality across
     // color spaces is unreliable and breaks swatch-highlight lookups.
