@@ -21,8 +21,8 @@ mkdir -p "$APP_DIR/Contents/Resources"
 cp "$BINARY" "$APP_DIR/Contents/MacOS/localshot"
 
 # Copy icon if it exists
-if [ -f "$REPO_DIR/Resources/AppIcon.icns" ]; then
-    cp "$REPO_DIR/Resources/AppIcon.icns" "$APP_DIR/Contents/Resources/"
+if [ -f "$REPO_DIR/resources/AppIcon.icns" ]; then
+    cp "$REPO_DIR/resources/AppIcon.icns" "$APP_DIR/Contents/Resources/"
 fi
 
 # Create Info.plist
@@ -53,14 +53,26 @@ cat > "$APP_DIR/Contents/Info.plist" << PLIST
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>LocalShot needs screen recording permission to capture screenshots.</string>
+    <key>NSInputMonitoringUsageDescription</key>
+    <string>LocalShot needs Input Monitoring to respond to global hotkeys (Cmd+Shift+S, Cmd+Shift+A).</string>
     <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSSupportsAutomaticTermination</key>
+    <true/>
+    <key>NSSupportsSuddenTermination</key>
     <true/>
 </dict>
 </plist>
 PLIST
 
-# Ad-hoc code sign
-codesign --force --sign - --identifier com.localshot.app "$APP_DIR"
+# Code sign with stable identity (preserves Screen Recording permission across rebuilds)
+SIGN_IDENTITY="Apple Development: Ishan Panta (M8456FDZST)"
+if security find-identity -v -p codesigning | grep -q "$SIGN_IDENTITY"; then
+    codesign --force --sign "$SIGN_IDENTITY" --identifier com.localshot.app "$APP_DIR"
+else
+    echo "Warning: signing identity not found, using ad-hoc (permissions won't persist across rebuilds)"
+    codesign --force --sign - --identifier com.localshot.app "$APP_DIR"
+fi
 
 echo "Done: $APP_DIR"
 echo "Install: cp -r \"$APP_DIR\" /Applications/"

@@ -10,7 +10,6 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("CoreGraphics"),
-                .linkedFramework("CoreImage"),
                 .linkedFramework("QuartzCore")
             ]
         ),
