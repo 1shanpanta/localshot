@@ -34,14 +34,19 @@ public class StatusBarController {
     private func buildMenu() {
         let menu = NSMenu()
 
-        let fullItem = NSMenuItem(title: "Capture Full Screen", action: #selector(handleFullScreen), keyEquivalent: "s")
+        // Custom attributed titles so we can render the shortcut as ⌘⇧S
+        // (Cmd first, Shift second) instead of macOS's default ⇧⌘S order.
+        // Trade-off: no native keyEquivalent, so ⌘⇧S from inside the menu
+        // won't trigger the item — but the CGEventTap fires the hotkey
+        // globally regardless of menu state.
+        let fullItem = NSMenuItem(title: "Capture Full Screen", action: #selector(handleFullScreen), keyEquivalent: "")
         fullItem.target = self
-        fullItem.keyEquivalentModifierMask = [.command, .shift]
+        fullItem.attributedTitle = Self.menuLabel(title: "Capture Full Screen", shortcut: "⌘⇧S")
         menu.addItem(fullItem)
 
-        let areaItem = NSMenuItem(title: "Capture Area", action: #selector(handleArea), keyEquivalent: "a")
+        let areaItem = NSMenuItem(title: "Capture Area", action: #selector(handleArea), keyEquivalent: "")
         areaItem.target = self
-        areaItem.keyEquivalentModifierMask = [.command, .shift]
+        areaItem.attributedTitle = Self.menuLabel(title: "Capture Area", shortcut: "⌘⇧A")
         menu.addItem(areaItem)
 
         menu.addItem(NSMenuItem.separator())
@@ -80,6 +85,28 @@ public class StatusBarController {
             guard let self = self, self.flashToken == myToken else { return }
             self.statusItem.button?.image = self.defaultIcon
         }
+    }
+
+    /// Build an NSMenuItem title with the shortcut label right-aligned.
+    /// Used to control modifier-symbol ordering (⌘⇧ instead of native ⇧⌘).
+    private static func menuLabel(title: String, shortcut: String) -> NSAttributedString {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: 220, options: [:])]
+        paragraph.defaultTabInterval = 220
+
+        let font = NSFont.menuFont(ofSize: 0)
+        let attr = NSMutableAttributedString(string: "\(title)\t\(shortcut)")
+        attr.addAttributes([
+            .font: font,
+            .paragraphStyle: paragraph,
+            .foregroundColor: NSColor.labelColor
+        ], range: NSRange(location: 0, length: attr.length))
+
+        let shortcutRange = (attr.string as NSString).range(of: shortcut)
+        if shortcutRange.location != NSNotFound {
+            attr.addAttribute(.foregroundColor, value: NSColor.secondaryLabelColor, range: shortcutRange)
+        }
+        return attr
     }
 
     // MARK: - Icon Drawing

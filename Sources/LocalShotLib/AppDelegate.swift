@@ -48,6 +48,28 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: - Permission
 
+    /// Tracks whether we've already shown the guidance alert this session so
+    /// we don't pop it on every hotkey press while the user is in settings.
+    private var screenRecordingPromptShown = false
+
+    /// Check Screen Recording TCC. If not granted, triggers the system prompt
+    /// and shows our own guidance dialog. Returns true if already granted.
+    @discardableResult
+    private func ensureScreenRecordingOrPrompt() -> Bool {
+        if CGPreflightScreenCaptureAccess() { return true }
+
+        // Triggers the system prompt the first time, no-op afterwards.
+        CGRequestScreenCaptureAccess()
+
+        // Show our own alert once per session — it explains the relaunch step
+        // that macOS's prompt glosses over.
+        if !screenRecordingPromptShown {
+            screenRecordingPromptShown = true
+            promptScreenRecording()
+        }
+        return false
+    }
+
     private func promptScreenRecording() {
         // Temporarily become a regular app so we can show an alert
         NSApp.setActivationPolicy(.regular)
@@ -55,20 +77,31 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
 
         let alert = NSAlert()
         alert.messageText = "Screen Recording Permission Required"
-        alert.informativeText = "LocalShot needs Screen Recording to capture windows (not just wallpaper).\n\n1. Click \"Open Settings\" below\n2. Find LocalShot and toggle it ON\n3. Quit and relaunch LocalShot"
+        alert.informativeText = """
+            LocalShot needs Screen Recording to capture windows — otherwise it only sees the wallpaper.
+
+            1. Click "Open Settings" below.
+            2. Enable LocalShot under Screen Recording. If it's already listed but toggled off (or present from an older build), remove it first, then relaunch LocalShot and re-grant.
+            3. Quit LocalShot from the menu bar and reopen it. macOS only applies newly-granted Screen Recording permission on app restart.
+            """
         alert.alertStyle = .warning
         alert.addButton(withTitle: "Open Settings")
+        alert.addButton(withTitle: "Quit LocalShot")
         alert.addButton(withTitle: "Later")
 
         let response = alert.runModal()
 
-        // Go back to accessory (menu bar only)
         NSApp.setActivationPolicy(.accessory)
 
-        if response == .alertFirstButtonReturn {
+        switch response {
+        case .alertFirstButtonReturn:
             if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
                 NSWorkspace.shared.open(url)
             }
+        case .alertSecondButtonReturn:
+            NSApp.terminate(nil)
+        default:
+            break
         }
     }
 
@@ -86,12 +119,12 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     private func captureFullScreen() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
+            // Gate captures on the TCC permission so we don't silently save a
+            // wallpaper-only image. If permission is missing we explicitly
+            // guide the user instead of proceeding.
+            guard self.ensureScreenRecordingOrPrompt() else { return }
             let screen = self.activeScreen()
 
-            // Always attempt the capture — CGPreflightScreenCaptureAccess can
-            // return stale results. The capture itself will return wallpaper-
-            // only if not granted, but at least it works immediately after the
-            // user grants permission.
             guard let image = self.captureManager.captureScreen(screen) else {
                 print("Capture returned nil")
                 self.promptScreenRecording()
@@ -104,6 +137,7 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
     private func captureArea() {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
             guard let self else { return }
+            guard self.ensureScreenRecordingOrPrompt() else { return }
             let screen = self.activeScreen()
 
             guard let fullImage = self.captureManager.captureScreen(screen) else {
