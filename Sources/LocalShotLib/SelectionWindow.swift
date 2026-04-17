@@ -40,6 +40,9 @@ public class SelectionWindow: NSWindow {
         )
         self.contentView = view
     }
+
+    override public var canBecomeKey: Bool { true }
+    override public var canBecomeMain: Bool { true }
 }
 
 private class SelectionView: NSView {
@@ -162,11 +165,19 @@ private class SelectionView: NSView {
             .foregroundColor: NSColor.white
         ]
         let size = (text as NSString).size(withAttributes: attrs)
+        let labelH = size.height + 6
+        let labelW = size.width + 12
+
+        // Position above selection, but flip to below if too close to top
+        let aboveY = selRect.maxY + 6
+        let belowY = selRect.minY - labelH - 6
+        let labelY = aboveY + labelH > bounds.maxY ? max(belowY, 0) : aboveY
+
         let labelRect = NSRect(
-            x: selRect.minX,
-            y: selRect.maxY + 6,
-            width: size.width + 12,
-            height: size.height + 6
+            x: min(selRect.minX, bounds.maxX - labelW),
+            y: labelY,
+            width: labelW,
+            height: labelH
         )
 
         NSGraphicsContext.saveGraphicsState()
@@ -209,14 +220,21 @@ private class SelectionView: NSView {
         let scaleX = screenshot.size.width / bounds.width
         let scaleY = screenshot.size.height / bounds.height
 
-        let cropRect = NSRect(
+        let flippedY = screenshot.size.height - (selRect.maxY * scaleY)
+        var cropRect = NSRect(
             x: selRect.origin.x * scaleX,
-            y: selRect.origin.y * scaleY,
+            y: flippedY,
             width: selRect.width * scaleX,
             height: selRect.height * scaleY
         )
 
-        guard let cgImage = screenshot.cgImage(forProposedRect: nil, context: nil, hints: nil),
+        guard let cgImage = screenshot.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }
+
+        // Clamp to image bounds so edge-of-screen selections don't silently
+        // return nil from cgImage.cropping(to:).
+        let imageBounds = NSRect(x: 0, y: 0, width: CGFloat(cgImage.width), height: CGFloat(cgImage.height))
+        cropRect = cropRect.intersection(imageBounds)
+        guard cropRect.width > 0, cropRect.height > 0,
               let cropped = cgImage.cropping(to: cropRect) else { return }
 
         let croppedImage = NSImage(cgImage: cropped, size: cropRect.size)
