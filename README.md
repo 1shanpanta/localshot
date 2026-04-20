@@ -47,8 +47,8 @@ Grant both in **System Settings → Privacy & Security**, then relaunch.
 
 | Action | Shortcut |
 |---|---|
-| Capture full screen | **⇧⌘S** |
-| Capture area (drag to select) | **⇧⌘A** |
+| Capture full screen | **⌘⇧S** |
+| Capture area (drag to select) | **⌘⇧A** |
 
 These are consumed by LocalShot — the focused app will **not** also see them (unlike the default `NSEvent` global monitor, LocalShot uses a `CGEventTap` so Cmd+Shift+S won't also open "Save As" in your editor).
 
