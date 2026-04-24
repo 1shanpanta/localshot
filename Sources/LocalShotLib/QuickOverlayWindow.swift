@@ -145,12 +145,20 @@ public class QuickOverlayWindow: NSPanel {
     }
 }
 
-/// NSImageView that fires a closure on click
+/// NSImageView that fires a closure on click.
+/// Overrides `acceptsFirstMouse` because the host panel is `.nonactivatingPanel`
+/// and never becomes key — without this, clicks on the thumbnail are swallowed
+/// by the window instead of reaching `mouseDown`.
 private class ClickableImageView: NSImageView {
     var onClick: (() -> Void)?
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .pointingHand)
+    }
+
     override func mouseDown(with event: NSEvent) {
-        super.mouseDown(with: event)
         onClick?()
     }
 }
