@@ -57,8 +57,6 @@ cat > "$APP_DIR/Contents/Info.plist" << PLIST
     <string>LocalShot needs Input Monitoring to respond to global hotkeys (Cmd+Shift+S, Cmd+Shift+A).</string>
     <key>NSHighResolutionCapable</key>
     <true/>
-    <key>NSSupportsAutomaticTermination</key>
-    <true/>
     <key>NSSupportsSuddenTermination</key>
     <true/>
 </dict>
