@@ -4,7 +4,6 @@ public class StatusBarController {
     private let statusItem: NSStatusItem
     private let onCaptureFullScreen: () -> Void
     private let onCaptureArea: () -> Void
-    private let onOpenEditor: () -> Void
     private let onQuit: () -> Void
     private let defaultIcon: NSImage
     private var flashToken: UInt64 = 0
@@ -12,12 +11,10 @@ public class StatusBarController {
     public init(
         onCaptureFullScreen: @escaping () -> Void,
         onCaptureArea: @escaping () -> Void,
-        onOpenEditor: @escaping () -> Void,
         onQuit: @escaping () -> Void
     ) {
         self.onCaptureFullScreen = onCaptureFullScreen
         self.onCaptureArea = onCaptureArea
-        self.onOpenEditor = onOpenEditor
         self.onQuit = onQuit
 
         // Build the template icon once and mark it template BEFORE assigning.
@@ -70,9 +67,6 @@ public class StatusBarController {
 
     /// Save (to disk) — down-arrow flash so the user can tell copy/save apart.
     func flashSaved() { flash(icon: Self.drawSaveIcon()) }
-
-    /// Back-compat alias (equivalent to flashCopied).
-    func flashIcon() { flashCopied() }
 
     /// Token-guarded flash so rapid back-to-back calls restore the real icon
     /// instead of leaving a stale flash glyph.

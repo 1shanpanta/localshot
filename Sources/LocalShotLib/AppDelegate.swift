@@ -20,7 +20,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         statusBar = StatusBarController(
             onCaptureFullScreen: { [weak self] in self?.captureFullScreen() },
             onCaptureArea: { [weak self] in self?.captureArea() },
-            onOpenEditor: { [weak self] in self?.openEditorEmpty() },
             onQuit: { NSApp.terminate(nil) }
         )
 
@@ -257,15 +256,6 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
         editorWindow = AnnotationWindow(image: image)
         editorWindow?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-    }
-
-    private func openEditorEmpty() {
-        if let existing = editorWindow, existing.isVisible {
-            existing.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
-            return
-        }
-        captureFullScreen()
     }
 
     // MARK: - Clipboard & Save

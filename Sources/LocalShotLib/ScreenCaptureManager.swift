@@ -5,18 +5,6 @@ public class ScreenCaptureManager {
 
     public init() {}
 
-    /// Capture all connected displays into one unified image.
-    public func captureAllDisplays() -> NSImage? {
-        guard let cgImage = CGWindowListCreateImage(
-            CGRect.null,
-            .optionOnScreenOnly,
-            kCGNullWindowID,
-            .bestResolution
-        ) else { return nil }
-        let size = NSSize(width: CGFloat(cgImage.width), height: CGFloat(cgImage.height))
-        return NSImage(cgImage: cgImage, size: size)
-    }
-
     /// Capture a single NSScreen. Converts the NSScreen frame (bottom-left
     /// origin, relative to the primary display) into CG global coordinates
     /// (top-left origin, also relative to the primary display).
