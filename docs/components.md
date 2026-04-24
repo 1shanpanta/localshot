@@ -1,6 +1,6 @@
 # LocalShot Components
 
-Native macOS screenshot + annotation tool. Swift 5.9, AppKit, CoreGraphics, CoreImage, QuartzCore. macOS 13+.
+Native macOS screenshot + annotation tool. Swift 5.9, AppKit, CoreGraphics, QuartzCore, Carbon (for HIToolbox keycodes). macOS 13+.
 
 ---
 
@@ -46,7 +46,11 @@ NSStatusItem in the macOS menu bar.
 
 ## HotkeyManager
 
-Global + local hotkey listener. Installs both `NSEvent.addGlobalMonitorForEvents` (fires when other apps are frontmost) and `addLocalMonitorForEvents` (fires when LocalShot owns the focused window) so the hotkey works in all states.
+`CGEventTap` on `.cgSessionEventTap` with `.defaultTap` options, so LocalShot can **consume** the matching keyDown — the focused app never receives Cmd+Shift+S / Cmd+Shift+A. Plain `NSEvent` monitors cannot consume events, which is why this replaced the earlier monitor-based implementation.
+
+Filters to `[.maskCommand, .maskShift]` exactly (rejects Ctrl/Option to stay out of the way), drops auto-repeat, and debounces fires to 500ms. Self-heals from `tapDisabledByTimeout` / `tapDisabledByUserInput` by re-enabling the tap.
+
+Requires the **Input Monitoring** TCC permission (`NSInputMonitoringUsageDescription`).
 
 | Action | Shortcut | keyCode |
 |---|---|---|
@@ -88,8 +92,8 @@ NSPanel floating thumbnail in bottom-right corner. Shown immediately after captu
 - Close
 
 **Behavior:**
-- Auto-closes after 8 seconds
-- Fade-in animation on appear
+- Auto-closes after 5 seconds (paused while cursor is over the overlay)
+- Fade + 20pt slide-up animation on appear
 
 ---
 

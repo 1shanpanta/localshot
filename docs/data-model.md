@@ -17,9 +17,9 @@ Base protocol for all drawable annotations.
 | bounds | NSRect | Computed bounding rectangle |
 
 **Methods:**
-- `draw(in: NSGraphicsContext, viewBounds: NSRect)` — render the annotation
+- `draw(in ctx: CGContext, viewBounds: NSRect)` — render the annotation
 - `hitTest(point: NSPoint) -> Bool` — check if point is inside annotation
-- `move(by: CGSize)` — translate annotation position
+- `move(by delta: NSPoint)` — translate annotation position
 
 ---
 
@@ -86,18 +86,18 @@ Enum with 10 cases. Each case carries metadata for toolbar rendering.
 
 ## Color Palette
 
-8 default colors defined in `defaultColors`:
+8 default colors defined in `defaultColors`. Values are hand-picked RGB (not `.systemRed` etc) so they render consistently against dark screenshots:
 
-| Index | Color | Approximate NSColor |
+| Index | Color | RGB |
 |---|---|---|
-| 0 | Red | .systemRed |
-| 1 | Orange | .systemOrange |
-| 2 | Yellow | .systemYellow |
-| 3 | Green | .systemGreen |
-| 4 | Blue | .systemBlue |
-| 5 | Purple | .systemPurple |
-| 6 | White | .white |
-| 7 | Black | .black |
+| 0 | Red | (1.00, 0.23, 0.23) |
+| 1 | Orange | (1.00, 0.58, 0.00) |
+| 2 | Yellow | (0.98, 0.75, 0.15) |
+| 3 | Green | (0.20, 0.83, 0.60) |
+| 4 | Blue | (0.29, 0.62, 1.00) |
+| 5 | Purple | (0.65, 0.55, 0.98) |
+| 6 | White | `.white` |
+| 7 | Black | `.black` |
 
 ---
 

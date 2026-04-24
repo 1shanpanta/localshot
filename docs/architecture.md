@@ -1,7 +1,7 @@
 # LocalShot Architecture
 
 ## Overview
-Native macOS screenshot tool built with Swift + AppKit. Menu bar app with screen capture, area selection, annotation editor, and quick overlay. Follows the same architecture as Open Wispr.
+Native macOS screenshot tool built with Swift + AppKit. Menu bar app with screen capture, area selection, annotation editor, and quick overlay.
 
 ## Tech Stack
 - **Language:** Swift 5.9
@@ -30,7 +30,7 @@ Package.swift
 | `main.swift` | Entry point, NSApplication setup |
 | `AppDelegate.swift` | Coordinator: capture flow, clipboard, save |
 | `StatusBarController.swift` | NSStatusItem, context menu, template icon |
-| `HotkeyManager.swift` | NSEvent global + local monitors for Cmd+Shift+S / Cmd+Shift+A |
+| `HotkeyManager.swift` | CGEventTap that consumes Cmd+Shift+S / Cmd+Shift+A globally |
 | `ScreenCaptureManager.swift` | CGWindowListCreateImage wrapper |
 | `SelectionWindow.swift` | Transparent fullscreen overlay, drag-to-select |
 | `AnnotationTool.swift` | Tool enum, icon drawing, shortcuts, colors |
