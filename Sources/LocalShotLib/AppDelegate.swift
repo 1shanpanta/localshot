@@ -1,6 +1,6 @@
 import AppKit
 
-public class AppDelegate: NSObject, NSApplicationDelegate {
+public class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     private var statusBar: StatusBarController!
     private var hotkeyManager: HotkeyManager!
     private var captureManager: ScreenCaptureManager!
@@ -253,9 +253,21 @@ public class AppDelegate: NSObject, NSApplicationDelegate {
             }
             existing.close()
         }
-        editorWindow = AnnotationWindow(image: image)
-        editorWindow?.makeKeyAndOrderFront(nil)
+        let window = AnnotationWindow(image: image)
+        window.delegate = self
+        editorWindow = window
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    // Release the editor window (and its potentially-large screenshot) as soon
+    // as the user closes it, instead of holding the reference until the next
+    // capture replaces it.
+    public func windowWillClose(_ notification: Notification) {
+        if let closing = notification.object as? AnnotationWindow,
+           closing === editorWindow {
+            editorWindow = nil
+        }
     }
 
     // MARK: - Clipboard & Save
