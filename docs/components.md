@@ -18,12 +18,13 @@ Central orchestrator. Owns all major components.
 | AnnotationWindow | Full editor |
 
 **Key methods:**
-- `captureFullScreen()` — capture entire display
+- `captureFullScreen()` — capture entire active screen
 - `captureArea()` — launch area selection flow
-- `showOverlay()` — display QuickOverlayWindow with captured image
-- `openEditor()` — open AnnotationWindow with image
-- `copyToClipboard()` — copy current image to pasteboard
-- `saveImage()` — save current image to disk
+- `showOverlay(image:on:)` — display QuickOverlayWindow with captured image
+- `openEditor(with:)` — open AnnotationWindow with image; prompts to discard if existing editor has unsaved annotations
+- `copyToClipboard(image:)` — copy current image to pasteboard
+- `quickSaveToDesktop(image:)` — write a `LocalShot YYYY-MM-DD at HH.mm.ss.png` file to the user's Desktop
+- `windowWillClose(_:)` — `NSWindowDelegate` callback that releases the editor reference (and its screenshot) the moment the user closes the editor
 
 ---
 
@@ -31,8 +32,9 @@ Central orchestrator. Owns all major components.
 
 NSStatusItem in the macOS menu bar.
 
-- Custom crosshair icon
-- `flashIcon()` — visual feedback on copy
+- Custom hand-drawn viewfinder/crosshair icon (template-tinted)
+- `flashCopied()` — checkmark glyph flash after Copy
+- `flashSaved()` — down-arrow glyph flash after Save (lets the user tell copy from save apart at a glance)
 
 **Menu items:**
 
@@ -63,8 +65,8 @@ Requires the **Input Monitoring** TCC permission (`NSInputMonitoringUsageDescrip
 
 Thin wrapper around `CGWindowListCreateImage`.
 
-- `captureFullScreen()` — captures the full display
-- `captureRect()` — captures a specific CGRect region
+- `captureScreen(_ screen: NSScreen)` — captures the full frame of a specific NSScreen, converting NSScreen's bottom-left coordinates into CG global top-left coordinates relative to the primary display
+- `captureRect(_ rect: CGRect)` — captures a specific CGRect region in CG global coordinates
 
 ---
 
@@ -91,21 +93,26 @@ NSPanel floating thumbnail in bottom-right corner. Shown immediately after captu
 - Save
 - Close
 
+**Thumbnail interactions:**
+- **Click** — opens the annotation editor
+- **Drag-out** — initiates an `NSDraggingSession` with a temp PNG file URL on the pasteboard, so you can drop the screenshot into Claude Code, Slack, Messages, Finder, mail composers, etc. Click vs drag is disambiguated by a 4pt movement threshold
+
 **Behavior:**
 - Auto-closes after 5 seconds (paused while cursor is over the overlay)
 - Fade + 20pt slide-up animation on appear
+- `.nonactivatingPanel` so opening it doesn't steal focus from your current app
 
 ---
 
 ## AnnotationWindow
 
-Main editor NSWindow. Dark sidebar + canvas layout.
+Main editor NSWindow. Dark sidebar + canvas layout. Non-resizable; minimum canvas size is 320×600 (the floor that keeps the sidebar layout from collapsing).
 
 **Sidebar contents:**
-- 10 tool buttons with keyboard shortcuts
-- 8-color palette
+- 10 tool buttons with single-key shortcuts
+- 8-color palette (18pt circular swatches, fits inside the 156pt color row)
 - 5 stroke width options
-- Action buttons: Copy, Save, Undo, Clear
+- Action buttons: Copy, Save, Undo, Clear — implemented as `FlatButton`, a private `NSButton` subclass that suppresses macOS's default recessed pressed-overlay and replaces it with a subtle alpha-dim press animation
 
 **Canvas:** `AnnotationView` (see below)
 
@@ -156,9 +163,9 @@ Custom NSView that renders the screenshot + all annotations.
 - `strokeWidth: CGFloat`
 - `isSelected: Bool`
 - `bounds: NSRect`
-- `draw(in:viewBounds:)`
-- `hitTest(point:) -> Bool`
-- `move(by: CGSize)`
+- `draw(in ctx: CGContext, viewBounds: NSRect)`
+- `hitTest(point: NSPoint) -> Bool`
+- `move(by delta: NSPoint)`
 
 **Implementations:**
 
