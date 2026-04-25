@@ -145,12 +145,24 @@ public class QuickOverlayWindow: NSPanel {
     }
 }
 
-/// NSImageView that fires a closure on click.
+/// NSImageView that fires a closure on click and starts a drag-and-drop
+/// session with a PNG file URL when the user drags it out — drop the
+/// thumbnail into any app that accepts image / file drops (Claude Code,
+/// Slack, Messages, Finder, mail composers, etc).
+///
+/// Disambiguates click vs drag by a 4pt movement threshold. `mouseDown`
+/// stashes the start point; `mouseDragged` past the threshold begins the
+/// drag session; `mouseUp` only fires the onClick handler if no drag was
+/// started.
+///
 /// Overrides `acceptsFirstMouse` because the host panel is `.nonactivatingPanel`
 /// and never becomes key — without this, clicks on the thumbnail are swallowed
 /// by the window instead of reaching `mouseDown`.
-private class ClickableImageView: NSImageView {
+private class ClickableImageView: NSImageView, NSDraggingSource {
     var onClick: (() -> Void)?
+    private var mouseDownLocation: NSPoint = .zero
+    private var dragStarted = false
+    private let dragThreshold: CGFloat = 4
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
@@ -159,7 +171,67 @@ private class ClickableImageView: NSImageView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        onClick?()
+        mouseDownLocation = event.locationInWindow
+        dragStarted = false
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard !dragStarted else { return }
+        let dx = event.locationInWindow.x - mouseDownLocation.x
+        let dy = event.locationInWindow.y - mouseDownLocation.y
+        guard hypot(dx, dy) > dragThreshold else { return }
+        beginDrag(with: event)
+        dragStarted = true
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if !dragStarted { onClick?() }
+        dragStarted = false
+    }
+
+    private func beginDrag(with event: NSEvent) {
+        guard let image = self.image,
+              let url = writePNGToTemp(image) else { return }
+
+        let item = NSPasteboardItem()
+        item.setString(url.absoluteString, forType: .fileURL)
+
+        let dragItem = NSDraggingItem(pasteboardWriter: item)
+        // Show the thumbnail itself as the drag preview, anchored at the
+        // current cursor, scaled to the view's bounds so the image-under-
+        // cursor visual is consistent with what the user clicked.
+        dragItem.setDraggingFrame(bounds, contents: image)
+
+        beginDraggingSession(with: [dragItem], event: event, source: self)
+    }
+
+    /// Write the captured image to a PNG in NSTemporaryDirectory and return
+    /// its file URL. macOS cleans the temp dir on its own schedule, so we
+    /// don't track or delete the file ourselves.
+    private func writePNGToTemp(_ image: NSImage) -> URL? {
+        guard let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff),
+              let png = bitmap.representation(using: .png, properties: [:]) else {
+            return nil
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd 'at' HH.mm.ss"
+        let filename = "LocalShot \(formatter.string(from: Date())).png"
+        let url = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(filename)
+        do {
+            try png.write(to: url)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    func draggingSession(
+        _ session: NSDraggingSession,
+        sourceOperationMaskFor context: NSDraggingContext
+    ) -> NSDragOperation {
+        // Copy semantics — the source file in /tmp stays put after the drop.
+        .copy
     }
 }
 
