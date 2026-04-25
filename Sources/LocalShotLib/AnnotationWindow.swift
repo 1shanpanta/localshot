@@ -27,11 +27,14 @@ public class AnnotationWindow: NSWindow {
         let sidebarW: CGFloat = 180
         let titleBarH: CGFloat = 38
 
-        // Floor to keep the sidebar usable: it packs 10 tool buttons + color
-        // row + stroke row + 4 action buttons which together need ~450pt of
-        // height. Without a floor, tiny crops produce an unusable editor.
+        // Floor to keep the sidebar usable. The sidebar is laid out top-down
+        // with relative offsets for tools/color/stroke, but the 4 action
+        // buttons (Copy/Save/Undo/Clear) are pinned to absolute y=12..80 at
+        // the bottom. The stroke row sits at y = canvasH - 488; if the canvas
+        // height drops below ~580 the stroke row collides with the action
+        // buttons. 600 leaves ~32pt of breathing room.
         let minCanvasW: CGFloat = 320
-        let minCanvasH: CGFloat = 460
+        let minCanvasH: CGFloat = 600
         let canvasW = max(image.size.width * scale, minCanvasW)
         let canvasH = max(image.size.height * scale, minCanvasH)
 
