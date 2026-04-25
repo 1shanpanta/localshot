@@ -136,7 +136,8 @@ public class AnnotationWindow: NSWindow {
             btn.tag = index
             colorRow.addSubview(btn)
             colorButtons[index] = btn
-            cx += 22
+            // 18pt swatch + 1pt gap; 8 swatches fit in (sidebarW - 24) = 156.
+            cx += 19
         }
         sidebar.addSubview(colorRow)
         y -= 36
@@ -203,12 +204,12 @@ public class AnnotationWindow: NSWindow {
     }
 
     private func makeColorButton(color: NSColor, x: CGFloat) -> NSButton {
-        let btn = NSButton(frame: NSRect(x: x, y: 2, width: 20, height: 20))
+        let btn = NSButton(frame: NSRect(x: x, y: 4, width: 18, height: 18))
         btn.bezelStyle = .recessed
         btn.isBordered = false
         btn.title = ""
         btn.wantsLayer = true
-        btn.layer?.cornerRadius = 10
+        btn.layer?.cornerRadius = 9
         btn.layer?.backgroundColor = color.cgColor
         btn.target = self
         btn.action = #selector(colorSelected(_:))
