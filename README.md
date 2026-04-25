@@ -26,13 +26,14 @@ Download or clone, then:
 ```bash
 swift build -c release
 bash scripts/bundle-app.sh
-rsync -a --delete LocalShot.app/ /Applications/LocalShot.app/
-open /Applications/LocalShot.app
+mkdir -p ~/Applications
+rsync -a --delete LocalShot.app/ ~/Applications/LocalShot.app/
+open ~/Applications/LocalShot.app
 ```
 
 The app lives in your menu bar (viewfinder icon).
 
-`rsync` (rather than `cp -r`) overwrites the bundle in place so the directory inode is preserved across rebuilds. Combined with the stable code-signing identity in `scripts/bundle-app.sh`, this means macOS TCC keeps your Screen Recording / Input Monitoring grants every time you reinstall — no re-prompting on each rebuild.
+Install path is `~/Applications/` (your user Applications directory) rather than `/Applications/` so no admin password is needed on every rebuild. `rsync` (rather than `cp -r`) overwrites the bundle in place so the directory inode is preserved across rebuilds. Combined with the stable code-signing identity in `scripts/bundle-app.sh`, this means macOS TCC keeps your Screen Recording / Input Monitoring grants every time you reinstall — no re-prompting on each rebuild.
 
 ## First-launch permissions
 

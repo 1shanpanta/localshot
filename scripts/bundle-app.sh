@@ -73,4 +73,4 @@ else
 fi
 
 echo "Done: $APP_DIR"
-echo "Install: cp -r \"$APP_DIR\" /Applications/"
+echo "Install: mkdir -p ~/Applications && rsync -a --delete \"$APP_DIR/\" ~/Applications/LocalShot.app/"
