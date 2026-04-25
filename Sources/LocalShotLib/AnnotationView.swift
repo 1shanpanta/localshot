@@ -310,6 +310,10 @@ public class AnnotationView: NSView, BlurImageProvider {
         }
         sender.removeFromSuperview()
         textField = nil
+        // Restore canvas as first responder so editor shortcuts (Cmd+S, tool
+        // keys) work immediately after committing text — without this, the
+        // window has no first responder until the user clicks the canvas.
+        window?.makeFirstResponder(self)
         needsDisplay = true
     }
 
