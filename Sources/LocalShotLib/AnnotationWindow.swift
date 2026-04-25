@@ -244,9 +244,7 @@ public class AnnotationWindow: NSWindow {
     }
 
     private func makeActionButton(title: String, x: CGFloat, y: CGFloat, color: NSColor, action: Selector) -> NSButton {
-        let btn = NSButton(frame: NSRect(x: x, y: y, width: 80, height: 30))
-        btn.bezelStyle = .recessed
-        btn.isBordered = false
+        let btn = FlatButton(frame: NSRect(x: x, y: y, width: 80, height: 30))
         btn.title = title
         btn.font = NSFont.systemFont(ofSize: 12, weight: .medium)
         btn.contentTintColor = color
@@ -259,9 +257,7 @@ public class AnnotationWindow: NSWindow {
     }
 
     private func makeSmallAction(title: String, x: CGFloat, y: CGFloat, action: Selector) -> NSButton {
-        let btn = NSButton(frame: NSRect(x: x, y: y, width: 72, height: 30))
-        btn.bezelStyle = .recessed
-        btn.isBordered = false
+        let btn = FlatButton(frame: NSRect(x: x, y: y, width: 72, height: 30))
         btn.title = title
         btn.font = NSFont.systemFont(ofSize: 11)
         btn.contentTintColor = NSColor(white: 0.6, alpha: 1)
@@ -271,6 +267,44 @@ public class AnnotationWindow: NSWindow {
         btn.target = self
         btn.action = action
         return btn
+    }
+
+    // MARK: - FlatButton
+
+    /// NSButton subclass that suppresses macOS's default `.recessed`
+    /// highlight (the white-ish overlay that paints the whole button area
+    /// on click) and replaces it with a subtle alpha-dim press animation,
+    /// matching the click feel of native macOS toolbar buttons.
+    private class FlatButton: NSButton {
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            self.bezelStyle = .recessed
+            self.isBordered = false
+        }
+
+        required init?(coder: NSCoder) { fatalError() }
+
+        // Force the cell to never report itself as highlighted so AppKit
+        // skips the recessed pressed-state overlay. The press feedback is
+        // entirely driven by the alpha animation in mouseDown below.
+        override var isHighlighted: Bool {
+            get { false }
+            set { }
+        }
+
+        override func mouseDown(with event: NSEvent) {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.08
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                self.animator().alphaValue = 0.7
+            }
+            super.mouseDown(with: event)
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.16
+                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                self.animator().alphaValue = 1.0
+            }
+        }
     }
 
     private func makeLabel(_ text: String, size: CGFloat, color: NSColor, bold: Bool) -> NSTextField {
