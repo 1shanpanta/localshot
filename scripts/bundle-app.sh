@@ -63,14 +63,26 @@ cat > "$APP_DIR/Contents/Info.plist" << PLIST
 </plist>
 PLIST
 
-# Code sign with stable identity (preserves Screen Recording permission across rebuilds)
-SIGN_IDENTITY="Apple Development: Ishan Panta (M8456FDZST)"
-if security find-identity -v -p codesigning | grep -q "$SIGN_IDENTITY"; then
-    codesign --force --sign "$SIGN_IDENTITY" --identifier com.localshot.app "$APP_DIR"
-else
-    echo "Warning: signing identity not found, using ad-hoc (permissions won't persist across rebuilds)"
-    codesign --force --sign - --identifier com.localshot.app "$APP_DIR"
+# TCC stores the grant against `identifier com.localshot.app and certificate
+# leaf = H"<hash>"`. Ad-hoc has no leaf, so every rebuild reads as a new app and
+# macOS asks for Screen Recording again. Refuse ad-hoc unless it is asked for.
+SIGN_IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning \
+    | sed -n 's/^ *[0-9][0-9]*) [0-9A-F]* "\(.*\)"$/\1/p' | head -1)}"
+
+if [ -z "$SIGN_IDENTITY" ]; then
+    echo "Error: no code signing identity found in your keychains." >&2
+    echo "  List them:  security find-identity -v -p codesigning" >&2
+    echo "  Choose one: SIGN_IDENTITY=\"My Identity\" bash scripts/bundle-app.sh" >&2
+    echo "  Ad-hoc:     SIGN_IDENTITY=- bash scripts/bundle-app.sh" >&2
+    exit 1
 fi
+
+if [ "$SIGN_IDENTITY" = "-" ]; then
+    echo "Signing ad-hoc. macOS will ask for Screen Recording again after every rebuild."
+else
+    echo "Signing with: $SIGN_IDENTITY"
+fi
+codesign --force --sign "$SIGN_IDENTITY" --identifier com.localshot.app "$APP_DIR"
 
 echo "Done: $APP_DIR"
 echo "Install: mkdir -p ~/Applications && rsync -a --delete \"$APP_DIR/\" ~/Applications/LocalShot.app/"

@@ -97,7 +97,14 @@ swift build -c release
 bash scripts/bundle-app.sh
 ```
 
-The bundle script signs with a hard-coded Apple Development identity. Edit `scripts/bundle-app.sh` if yours differs — without a stable signing identity, macOS will re-prompt for Screen Recording permission on every rebuild.
+The bundle script signs with the first code signing identity in your keychains. Set `SIGN_IDENTITY` to choose another one, or `SIGN_IDENTITY=-` to sign ad-hoc:
+
+```bash
+security find-identity -v -p codesigning        # list what you have
+SIGN_IDENTITY="My Identity" bash scripts/bundle-app.sh
+```
+
+Any stable identity works, including a self-signed one you make in Keychain Access. An Apple Developer ID is needed only to distribute the app to other machines. Without a stable identity, macOS asks for Screen Recording permission again after every rebuild, so the script stops instead of signing ad-hoc by accident.
 
 ## Tech stack
 
