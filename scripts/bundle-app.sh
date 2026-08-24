@@ -66,12 +66,21 @@ PLIST
 # TCC stores the grant against `identifier com.localshot.app and certificate
 # leaf = H"<hash>"`. Ad-hoc has no leaf, so every rebuild reads as a new app and
 # macOS asks for Screen Recording again. Refuse ad-hoc unless it is asked for.
-SIGN_IDENTITY="${SIGN_IDENTITY:-$(security find-identity -v -p codesigning \
-    | sed -n 's/^ *[0-9][0-9]*) [0-9A-F]* "\(.*\)"$/\1/p' | head -1)}"
+IDENTITIES="$(security find-identity -v -p codesigning \
+    | sed -n 's/^ *[0-9][0-9]*) [0-9A-F]* "\(.*\)"$/\1/p')"
+COUNT="$(printf '%s' "$IDENTITIES" | grep -c . || true)"
 
-if [ -z "$SIGN_IDENTITY" ]; then
-    echo "Error: no code signing identity found in your keychains." >&2
-    echo "  List them:  security find-identity -v -p codesigning" >&2
+if [ -z "${SIGN_IDENTITY:-}" ] && [ "$COUNT" = "1" ]; then
+    SIGN_IDENTITY="$IDENTITIES"
+fi
+
+if [ -z "${SIGN_IDENTITY:-}" ]; then
+    if [ "$COUNT" = "0" ]; then
+        echo "Error: no code signing identity found in your keychains." >&2
+    else
+        echo "Error: $COUNT code signing identities found, so pick one:" >&2
+        printf '%s\n' "$IDENTITIES" | sed 's/^/    /' >&2
+    fi
     echo "  Choose one: SIGN_IDENTITY=\"My Identity\" bash scripts/bundle-app.sh" >&2
     echo "  Ad-hoc:     SIGN_IDENTITY=- bash scripts/bundle-app.sh" >&2
     exit 1
